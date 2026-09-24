@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     private Spinner sourceSpinner;
     private EditText urlEdit;
     private TextView status;
+    private Button dryRunButton;
     private Button updateButton;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
@@ -46,6 +47,8 @@ public class MainActivity extends Activity {
     private List<SatelliteConfig> configs;
     private OpenGd77SatelliteEncoder.BuildResult prepared;
     private byte[] originalAdditional;
+    private UpdatePlan updatePlan;
+    private OpenGd77Protocol.FirmwareInfo firmwareInfo;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -67,6 +70,7 @@ public class MainActivity extends Activity {
         sourceSpinner = findViewById(R.id.sourceSpinner);
         urlEdit = findViewById(R.id.urlEdit);
         status = findViewById(R.id.statusText);
+        dryRunButton = findViewById(R.id.dryRunButton);
         updateButton = findViewById(R.id.updateButton);
 
         String[] sources = {"CelesTrak — amateur", "R4UAB — satonline.txt", "Свой URL"};
@@ -82,18 +86,20 @@ public class MainActivity extends Activity {
 
         try (InputStream in = getAssets().open("Satellites.txt")) {
             configs = SatelliteConfigParser.parse(in);
-            log("OpenGD77 Satellite Updater v0.2");
+            log("OpenGD77 Satellite Updater v0.3");
             log("Загружено конфигураций Satellites.txt: " + configs.size());
         } catch (Exception e) { log("Ошибка Satellites.txt: " + e.getMessage()); }
 
         findViewById(R.id.downloadButton).setOnClickListener(v -> downloadTle());
         findViewById(R.id.openFileButton).setOnClickListener(v -> openLocalTle());
         findViewById(R.id.connectButton).setOnClickListener(v -> requestConnect());
+        dryRunButton.setOnClickListener(v -> runDryRun());
         updateButton.setOnClickListener(v -> confirmUpdate());
 
         IntentFilter f = new IntentFilter(USB_PERMISSION);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbReceiver, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(usbReceiver, f);
+        updateButtons();
     }
 
     private void downloadTle() {
@@ -130,6 +136,7 @@ public class MainActivity extends Activity {
         try {
             Map<Integer, TleEntry> all = TleParser.parse(text);
             prepared = OpenGd77SatelliteEncoder.buildPayload(configs, all);
+            updatePlan = null;
             StringBuilder b = new StringBuilder();
             b.append("TLE записей в источнике: ").append(all.size()).append('\n');
             b.append("Будут загружены: ").append(prepared.loaded.size()).append('\n');
@@ -138,8 +145,9 @@ public class MainActivity extends Activity {
                 b.append("Не найдены: ").append(prepared.missing.size()).append('\n');
                 for (String s : prepared.missing) b.append("  - ").append(s).append('\n');
             }
+            b.append("Для разрешения записи выполните Dry Run.");
             log(b.toString());
-            updateWriteButton();
+            updateButtons();
         } catch (Exception e) { log("Ошибка разбора TLE: " + e.getMessage()); }
     }
 
@@ -162,6 +170,7 @@ public class MainActivity extends Activity {
                 log("CDC ACM открыт, 115200 8N1. Чтение Radio Info...");
                 OpenGd77Protocol.FirmwareInfo fi = protocol.readFirmwareInfo();
                 if (fi.radioType != 5) throw new IllegalStateException("Подключено не MD-9600: radioType=" + fi.radioType);
+                firmwareInfo = fi;
                 log("MD-9600 найден, FW: " + fi.fwRevision + ", info v" + fi.structVersion);
 
                 protocol.enterProgrammingMode(false);
@@ -175,63 +184,160 @@ public class MainActivity extends Activity {
                 } finally {
                     protocol.closeProgrammingMode();
                 }
-                updateWriteButton();
+                updatePlan = null;
+                log("Чтение завершено. Для разрешения записи выполните Dry Run.");
+                updateButtons();
             } catch (Exception e) {
                 log("USB/read error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                originalAdditional = null;
+                updatePlan = null;
                 try { transport.close(); } catch (Exception ignored) {}
+                updateButtons();
             }
         });
     }
 
-    private void confirmUpdate() {
+    private void runDryRun() {
         if (prepared == null || originalAdditional == null) return;
-        new AlertDialog.Builder(this)
-                .setTitle("Записать Keps?")
-                .setMessage("Будут изменены только спутниковые данные TLV ID 3. Перед записью два сектора FLASH читаются и сохраняются в RAM; соседние данные не затираются.")
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Записать", (d, w) -> writeUpdate())
-                .show();
-    }
-
-    private void writeUpdate() {
+        dryRunButton.setEnabled(false);
         updateButton.setEnabled(false);
         worker.execute(() -> {
             try {
-                byte[] before = Arrays.copyOf(originalAdditional, originalAdditional.length);
-                AdditionalSettingsImage img = new AdditionalSettingsImage(before);
-                img.replaceSatellitePayload(prepared.payload);
-                byte[] after = img.bytes();
+                UpdatePlan plan = UpdatePlan.build(originalAdditional, prepared.payload);
+                updatePlan = plan;
+                log(formatDryRun(plan));
+            } catch (Exception e) {
+                updatePlan = null;
+                log("DRY RUN ОШИБКА: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            } finally {
+                updateButtons();
+            }
+        });
+    }
+
+    private String formatDryRun(UpdatePlan plan) {
+        StringBuilder b = new StringBuilder();
+        b.append("\n=== DRY RUN — ЗАПИСЬ НЕ ВЫПОЛНЯЛАСЬ ===\n");
+        if (firmwareInfo != null) {
+            b.append("MD-9600 / FW ").append(firmwareInfo.fwRevision)
+                    .append(" / Radio Info v").append(firmwareInfo.structVersion).append('\n');
+        }
+        b.append("Satellite TLV header: 0x").append(Integer.toHexString(plan.satelliteAbsoluteHeaderAddress())).append('\n');
+        b.append("Payload: 0x").append(Integer.toHexString(plan.satelliteTlv.payloadLength))
+                .append(" bytes, 0x").append(Integer.toHexString(plan.satelliteAbsolutePayloadStart()))
+                .append("..0x").append(Integer.toHexString(plan.satelliteAbsolutePayloadEndInclusive())).append('\n');
+        b.append("Спутников сейчас: ").append(plan.currentSatelliteCount).append('\n');
+        b.append("Спутников после обновления: ").append(plan.newSatelliteCount).append('\n');
+        b.append("Изменённых SatelliteElement: ").append(plan.changedRecords.size()).append('\n');
+        for (String name : plan.changedRecords) b.append("  * ").append(name).append('\n');
+        b.append("Изменённых байт: ").append(plan.changedBytes).append('\n');
+        b.append("FLASH sectors:\n");
+        for (int s = 0; s < 2; s++) {
+            boolean changed = plan.changedSectorIndexes.contains(s);
+            b.append("  0x").append(Integer.toHexString(0x20 + s)).append(": ")
+                    .append(changed ? "CHANGED" : "unchanged").append('\n');
+        }
+        b.append("Операция записи: ").append(plan.changedSectorIndexes.size()).append(" sector(s), ")
+                .append(plan.changedSectorIndexes.size() * AdditionalSettingsImage.SECTOR_SIZE).append(" bytes\n");
+        b.append("Проверка границ TLV: OK — за пределами Satellite payload изменений нет.\n");
+        if (plan.changedBytes == 0) b.append("Keps уже совпадают — запись не требуется.\n");
+        else b.append("Dry Run OK. Кнопка записи разблокирована.\n");
+        return b.toString();
+    }
+
+    private void confirmUpdate() {
+        if (updatePlan == null || updatePlan.changedBytes == 0) return;
+        final UpdatePlan plan = updatePlan;
+        StringBuilder message = new StringBuilder();
+        message.append("Dry Run успешно завершён.\n\nИзменённых байт: ").append(plan.changedBytes)
+                .append("\nСекторов FLASH: ").append(plan.changedSectorIndexes.size())
+                .append("\n\nПеред записью станция будет считана повторно. После записи каждый сектор будет полностью проверен read-back сравнением.");
+        new AlertDialog.Builder(this)
+                .setTitle("Записать Keps?")
+                .setMessage(message.toString())
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Записать", (d, w) -> writeUpdate(plan))
+                .show();
+    }
+
+    private void writeUpdate(UpdatePlan plan) {
+        dryRunButton.setEnabled(false);
+        updateButton.setEnabled(false);
+        worker.execute(() -> {
+            try {
+                log("\nКонтроль перед записью: повторное чтение 0x20000..0x21FFF...");
+                byte[] fresh;
+                protocol.enterProgrammingMode(false);
+                try {
+                    fresh = protocol.readFlash(AdditionalSettingsImage.FLASH_BASE, AdditionalSettingsImage.READ_SIZE);
+                } finally {
+                    protocol.closeProgrammingMode();
+                }
+                if (!Arrays.equals(fresh, plan.beforeImage)) {
+                    originalAdditional = fresh;
+                    updatePlan = null;
+                    int diff = firstDiff(fresh, plan.beforeImage);
+                    throw new IllegalStateException("FLASH изменился после Dry Run (первое отличие +0x"
+                            + Integer.toHexString(diff) + "). Выполните Dry Run повторно; запись отменена.");
+                }
+                log("Контроль перед записью: OK, FLASH не изменился.");
+
+                if (plan.changedSectorIndexes.isEmpty()) {
+                    log("Изменений нет. Запись не требуется.");
+                    return;
+                }
 
                 protocol.enterProgrammingMode(true);
                 try {
-                    int changed = 0;
-                    for (int s = 0; s < 2; s++) {
-                        byte[] oldSector = Arrays.copyOfRange(before, s * 4096, (s + 1) * 4096);
-                        byte[] newSector = Arrays.copyOfRange(after, s * 4096, (s + 1) * 4096);
-                        if (!Arrays.equals(oldSector, newSector)) {
-                            changed++;
-                            log("Запись FLASH sector 0x" + Integer.toHexString(0x20 + s) + "...");
-                            protocol.writeFlashSector(AdditionalSettingsImage.FLASH_BASE + s * 4096, newSector);
+                    for (int sectorIndex : plan.changedSectorIndexes) {
+                        int address = AdditionalSettingsImage.FLASH_BASE
+                                + sectorIndex * AdditionalSettingsImage.SECTOR_SIZE;
+                        int sectorNo = address / AdditionalSettingsImage.SECTOR_SIZE;
+                        byte[] expected = Arrays.copyOfRange(plan.afterImage,
+                                sectorIndex * AdditionalSettingsImage.SECTOR_SIZE,
+                                (sectorIndex + 1) * AdditionalSettingsImage.SECTOR_SIZE);
+
+                        log("Запись FLASH sector 0x" + Integer.toHexString(sectorNo) + "...");
+                        protocol.writeFlashSector(address, expected);
+
+                        log("Read-back sector 0x" + Integer.toHexString(sectorNo) + "...");
+                        byte[] verified = protocol.readFlash(address, AdditionalSettingsImage.SECTOR_SIZE);
+                        if (!Arrays.equals(expected, verified)) {
+                            int diff = firstDiff(expected, verified);
+                            throw new IllegalStateException("READ-BACK FAILED sector 0x"
+                                    + Integer.toHexString(sectorNo) + " at +0x" + Integer.toHexString(diff));
                         }
+                        log("Read-back sector 0x" + Integer.toHexString(sectorNo) + ": OK (4096/4096 bytes)");
                     }
-                    log("Записано изменённых секторов: " + changed);
                 } finally {
                     protocol.closeProgrammingMode();
                 }
 
+                originalAdditional = Arrays.copyOf(plan.afterImage, plan.afterImage.length);
+                updatePlan = null;
+                log("Все изменённые сектора подтверждены read-back сравнением.");
                 protocol.reboot();
-                log("Keps записаны. Радиостанция перезагружается.");
+                log("Keps записаны и проверены. Радиостанция перезагружается.");
                 originalAdditional = null;
             } catch (Exception e) {
-                log("ОШИБКА ЗАПИСИ: " + e.getMessage());
+                log("ОШИБКА ЗАПИСИ/ПРОВЕРКИ: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             } finally {
-                updateWriteButton();
+                updateButtons();
             }
         });
     }
 
-    private void updateWriteButton() {
-        runOnUiThread(() -> updateButton.setEnabled(prepared != null && originalAdditional != null));
+    private static int firstDiff(byte[] a, byte[] b) {
+        int n = Math.min(a.length, b.length);
+        for (int i = 0; i < n; i++) if (a[i] != b[i]) return i;
+        return n;
+    }
+
+    private void updateButtons() {
+        runOnUiThread(() -> {
+            dryRunButton.setEnabled(prepared != null && originalAdditional != null);
+            updateButton.setEnabled(updatePlan != null && updatePlan.changedBytes > 0);
+        });
     }
 
     private void log(final String s) {
