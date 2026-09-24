@@ -3,12 +3,14 @@ package ru.opengd77.satupdate;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 final class OpenGd77SatelliteEncoder {
     static final int RECORD_SIZE = 100;
     static final int MAX_SATELLITES = 25;
     static final int SATELLITE_PAYLOAD_SIZE = 0x09D8;
+    static final double MAX_TLE_AGE_DAYS = 30.0d;
 
     static final class BuildResult {
         final byte[] payload;
@@ -28,6 +30,8 @@ final class OpenGd77SatelliteEncoder {
         List<String> loaded = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         int index = 0;
+        long now = System.currentTimeMillis();
+
         for (SatelliteConfig cfg : configs) {
             if (index >= MAX_SATELLITES) break;
             TleEntry tle = tleByCatalog.get(cfg.catalogNumber);
@@ -35,6 +39,21 @@ final class OpenGd77SatelliteEncoder {
                 missing.add(cfg.name + " / " + cfg.catalogNumber);
                 continue;
             }
+
+            double ageDays;
+            try {
+                ageDays = tle.ageDays(now);
+            } catch (RuntimeException e) {
+                missing.add(cfg.name + " / " + cfg.catalogNumber + " [INVALID EPOCH]");
+                continue;
+            }
+
+            if (ageDays > MAX_TLE_AGE_DAYS) {
+                missing.add(cfg.name + " / " + cfg.catalogNumber + " [STALE "
+                        + String.format(Locale.US, "%.1f", ageDays) + " d > 30 d]");
+                continue;
+            }
+
             byte[] record = encodeRecord(cfg, tle);
             System.arraycopy(record, 0, payload, index * RECORD_SIZE, RECORD_SIZE);
             loaded.add(cfg.name + " / " + cfg.catalogNumber + " epoch " + tle.epochText());
