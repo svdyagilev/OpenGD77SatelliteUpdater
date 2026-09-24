@@ -16,6 +16,7 @@ final class UpdatePlan {
     final int newSatelliteCount;
     final int changedBytes;
     final List<String> changedRecords;
+    final List<String> skippedOlderRecords;
     final List<Integer> changedSectorIndexes;
 
     private UpdatePlan(byte[] beforeImage,
@@ -25,6 +26,7 @@ final class UpdatePlan {
                        int newSatelliteCount,
                        int changedBytes,
                        List<String> changedRecords,
+                       List<String> skippedOlderRecords,
                        List<Integer> changedSectorIndexes) {
         this.beforeImage = beforeImage;
         this.afterImage = afterImage;
@@ -33,6 +35,7 @@ final class UpdatePlan {
         this.newSatelliteCount = newSatelliteCount;
         this.changedBytes = changedBytes;
         this.changedRecords = changedRecords;
+        this.skippedOlderRecords = skippedOlderRecords;
         this.changedSectorIndexes = changedSectorIndexes;
     }
 
@@ -56,9 +59,10 @@ final class UpdatePlan {
         }
 
         int payloadStart = sat.payloadOffset;
-        int payloadEnd = sat.payloadOffset + sat.payloadLength; // exclusive
+        int payloadEnd = sat.payloadOffset + sat.payloadLength;
         byte[] currentPayload = Arrays.copyOfRange(before, payloadStart, payloadEnd);
         byte[] safePayload = Arrays.copyOf(currentPayload, currentPayload.length);
+        List<String> skippedOlder = new ArrayList<>();
 
         // Safety rule: preserve the exact satellite bank already present in the radio.
         // Candidate records are used only as a source for bytes 0x08..0x2F (40-byte orbital data).
@@ -69,7 +73,15 @@ final class UpdatePlan {
             if (currentName.isEmpty()) continue;
 
             int candidateOff = findRecordOffsetByName(candidateSatellitePayload, currentName);
-            if (candidateOff < 0) continue; // no fresh/valid TLE candidate: retain existing orbit
+            if (candidateOff < 0) continue;
+
+            // Never replace a valid epoch already in the radio with an older one.
+            long currentEpoch = SatelliteBankInspector.decodeEpochMillis(currentPayload, currentOff + ORBIT_OFFSET);
+            long candidateEpoch = SatelliteBankInspector.decodeEpochMillis(candidateSatellitePayload, candidateOff + ORBIT_OFFSET);
+            if (currentEpoch != Long.MIN_VALUE && candidateEpoch != Long.MIN_VALUE && candidateEpoch < currentEpoch) {
+                skippedOlder.add(currentName);
+                continue;
+            }
 
             System.arraycopy(candidateSatellitePayload, candidateOff + ORBIT_OFFSET,
                     safePayload, currentOff + ORBIT_OFFSET, ORBIT_LENGTH);
@@ -123,7 +135,7 @@ final class UpdatePlan {
         }
 
         return new UpdatePlan(before, after, sat, currentCount, newCount, changedBytes,
-                changedRecords, changedSectors);
+                changedRecords, skippedOlder, changedSectors);
     }
 
     int satelliteAbsoluteHeaderAddress() {
