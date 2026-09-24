@@ -57,6 +57,10 @@ public class MainActivity extends Activity {
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             if (!USB_PERMISSION.equals(intent.getAction())) return;
+            if (!usbPermissionPending) {
+                log("Повторный USB permission callback проигнорирован.");
+                return;
+            }
 
             boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
             UsbDevice d = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
@@ -123,9 +127,6 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
 
-        // OEM fallback. Normally UsbManager returns the result through usbReceiver.
-        // Some Android builds resume the Activity after the permission dialog without
-        // delivering the callback reliably. In that case use UsbManager.hasPermission().
         if (!usbPermissionPending || pendingPermissionDevice == null) return;
 
         UsbDevice d = pendingPermissionDevice;
@@ -135,8 +136,6 @@ public class MainActivity extends Activity {
             log("USB permission подтвержден после системного диалога. Продолжаю чтение...");
             connectAndRead(d);
         } else {
-            // onResume after a dismissed/denied system permission dialog: never leave
-            // the UI permanently locked in radioBusy state.
             usbPermissionPending = false;
             pendingPermissionDevice = null;
             log("USB permission не получен. Можно повторить подключение.");
