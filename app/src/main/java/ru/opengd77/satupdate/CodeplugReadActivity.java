@@ -57,7 +57,7 @@ public class CodeplugReadActivity extends Activity {
 
         status = findViewById(R.id.codeplugReadStatus);
         retryButton = findViewById(R.id.codeplugReadRetryButton);
-        findViewById(R.id.codeplugReadBackButton).setOnClickListener(v -> finish());
+        findViewById(R.id.codeplugReadBackButton).setOnClickListener(v -> returnToMain());
         retryButton.setOnClickListener(v -> beginRead());
 
         usbManager = (UsbManager)getSystemService(Context.USB_SERVICE);
@@ -73,8 +73,6 @@ public class CodeplugReadActivity extends Activity {
         log("v0.5 Codeplug Viewer • только чтение");
         log("Полная запись codeplug в этой версии отключена.");
 
-        // Start after this activity has taken the foreground. The Satellite module activity is
-        // finishing at this point, which releases its USB interface before we claim it here.
         getWindow().getDecorView().post(this::beginRead);
     }
 
@@ -88,6 +86,18 @@ public class CodeplugReadActivity extends Activity {
             log("USB permission подтверждён после системного диалога.");
             readDevice(d);
         }
+    }
+
+    @Override public void onBackPressed() {
+        returnToMain();
+    }
+
+    private void returnToMain() {
+        try { transport.close(); } catch (Exception ignored) {}
+        Intent i = new Intent(this, MainActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(i);
+        finish();
     }
 
     private void beginRead() {
