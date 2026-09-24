@@ -19,7 +19,7 @@ final class NetworkFetcher {
         c.setConnectTimeout(10000);
         c.setReadTimeout(15000);
         c.setInstanceFollowRedirects(true);
-        c.setRequestProperty("User-Agent", "OpenGD77-SatUpdate/0.1 Android");
+        c.setRequestProperty("User-Agent", "OpenGD77-CPS-Android/0.4");
         int code = c.getResponseCode();
         if (code < 200 || code >= 300) throw new IOException("HTTP " + code);
         try (InputStream in = c.getInputStream();
