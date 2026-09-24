@@ -74,6 +74,34 @@
             android:layout_height="wrap_content"
             android:text="Проверить и обновить Keps" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Codeplug • v0.5 read-only"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/codeplugSummaryMainText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="6dp"
+            android:paddingBottom="8dp"
+            android:text="Кодплаг ещё не прочитан. Запись полного codeplug отключена." />
+
+        <Button
+            android:id="@+id/readCodeplugButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Прочитать codeplug" />
+
+        <Button
+            android:id="@+id/openCodeplugViewerButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:enabled="false"
+            android:text="Открыть Codeplug Viewer" />
+
         <Button
             android:id="@+id/advancedToggleButton"
             android:layout_width="match_parent"
