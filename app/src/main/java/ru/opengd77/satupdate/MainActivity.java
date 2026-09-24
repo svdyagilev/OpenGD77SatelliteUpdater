@@ -18,7 +18,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -83,6 +82,7 @@ public class MainActivity extends Activity {
 
         try (InputStream in = getAssets().open("Satellites.txt")) {
             configs = SatelliteConfigParser.parse(in);
+            log("OpenGD77 Satellite Updater v0.2");
             log("Загружено конфигураций Satellites.txt: " + configs.size());
         } catch (Exception e) { log("Ошибка Satellites.txt: " + e.getMessage()); }
 
@@ -146,6 +146,7 @@ public class MainActivity extends Activity {
     private void requestConnect() {
         UsbDevice d = transport.findDevice();
         if (d == null) { log("MD-9600/OpenGD77 USB 1FC9:0094 не найден"); return; }
+        log(transport.describeDevice(d));
         if (usbManager.hasPermission(d)) connectAndRead(d);
         else {
             PendingIntent pi = PendingIntent.getBroadcast(this, 0, new Intent(USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE);
@@ -154,10 +155,11 @@ public class MainActivity extends Activity {
     }
 
     private void connectAndRead(UsbDevice d) {
-        log("Подключение к USB...");
+        log("Подключение CDC ACM...");
         worker.execute(() -> {
             try {
                 transport.open(d);
+                log("CDC ACM открыт, 115200 8N1. Чтение Radio Info...");
                 OpenGd77Protocol.FirmwareInfo fi = protocol.readFirmwareInfo();
                 if (fi.radioType != 5) throw new IllegalStateException("Подключено не MD-9600: radioType=" + fi.radioType);
                 log("MD-9600 найден, FW: " + fi.fwRevision + ", info v" + fi.structVersion);
@@ -175,7 +177,7 @@ public class MainActivity extends Activity {
                 }
                 updateWriteButton();
             } catch (Exception e) {
-                log("USB/read error: " + e.getMessage());
+                log("USB/read error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 try { transport.close(); } catch (Exception ignored) {}
             }
         });
