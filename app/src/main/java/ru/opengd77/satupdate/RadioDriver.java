@@ -31,6 +31,7 @@ interface RadioDriver {
 
     Identity identify() throws IOException;
     byte[] readAdditionalSettings() throws IOException;
+    CodeplugSnapshot readCodeplug(Progress progress) throws IOException;
     void writeVerified(UpdatePlan plan, Progress progress) throws IOException;
     void reboot() throws IOException;
 }
