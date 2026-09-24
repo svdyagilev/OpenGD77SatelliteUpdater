@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     private Spinner sourceSpinner;
     private EditText urlEdit;
     private TextView status;
+    private Button connectButton;
     private Button dryRunButton;
     private Button updateButton;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -49,6 +50,7 @@ public class MainActivity extends Activity {
     private byte[] originalAdditional;
     private UpdatePlan updatePlan;
     private OpenGd77Protocol.FirmwareInfo firmwareInfo;
+    private volatile boolean radioBusy = false;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -56,7 +58,11 @@ public class MainActivity extends Activity {
             UsbDevice d = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
             if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) && d != null) {
                 connectAndRead(d);
-            } else log("USB permission denied");
+            } else {
+                radioBusy = false;
+                log("USB permission denied");
+                updateButtons();
+            }
         }
     };
 
@@ -70,6 +76,7 @@ public class MainActivity extends Activity {
         sourceSpinner = findViewById(R.id.sourceSpinner);
         urlEdit = findViewById(R.id.urlEdit);
         status = findViewById(R.id.statusText);
+        connectButton = findViewById(R.id.connectButton);
         dryRunButton = findViewById(R.id.dryRunButton);
         updateButton = findViewById(R.id.updateButton);
 
@@ -86,13 +93,15 @@ public class MainActivity extends Activity {
 
         try (InputStream in = getAssets().open("Satellites.txt")) {
             configs = SatelliteConfigParser.parse(in);
-            log("OpenGD77 Satellite Updater v0.3");
+            log("OpenGD77 Satellite Updater v" + BuildConfig.VERSION_NAME);
             log("Загружено конфигураций Satellites.txt: " + configs.size());
-        } catch (Exception e) { log("Ошибка Satellites.txt: " + e.getMessage()); }
+        } catch (Exception e) {
+            log("Ошибка Satellites.txt: " + e.getMessage());
+        }
 
         findViewById(R.id.downloadButton).setOnClickListener(v -> downloadTle());
         findViewById(R.id.openFileButton).setOnClickListener(v -> openLocalTle());
-        findViewById(R.id.connectButton).setOnClickListener(v -> requestConnect());
+        connectButton.setOnClickListener(v -> requestConnect());
         dryRunButton.setOnClickListener(v -> runDryRun());
         updateButton.setOnClickListener(v -> confirmUpdate());
 
@@ -106,8 +115,11 @@ public class MainActivity extends Activity {
         final String url = urlEdit.getText().toString().trim();
         log("Загрузка: " + url);
         worker.execute(() -> {
-            try { prepareTle(NetworkFetcher.get(url)); }
-            catch (Exception e) { log("Ошибка загрузки: " + e.getMessage()); }
+            try {
+                prepareTle(NetworkFetcher.get(url));
+            } catch (Exception e) {
+                log("Ошибка загрузки: " + e.getMessage());
+            }
         });
     }
 
@@ -125,10 +137,13 @@ public class MainActivity extends Activity {
         worker.execute(() -> {
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buf = new byte[4096]; int n;
+                byte[] buf = new byte[4096];
+                int n;
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                 prepareTle(new String(out.toByteArray(), StandardCharsets.US_ASCII));
-            } catch (Exception e) { log("Ошибка файла TLE: " + e.getMessage()); }
+            } catch (Exception e) {
+                log("Ошибка файла TLE: " + e.getMessage());
+            }
         });
     }
 
@@ -148,15 +163,27 @@ public class MainActivity extends Activity {
             b.append("Для разрешения записи выполните Dry Run.");
             log(b.toString());
             updateButtons();
-        } catch (Exception e) { log("Ошибка разбора TLE: " + e.getMessage()); }
+        } catch (Exception e) {
+            log("Ошибка разбора TLE: " + e.getMessage());
+        }
     }
 
     private void requestConnect() {
+        if (radioBusy) {
+            log("Подключение/чтение уже выполняется — повторное нажатие игнорировано.");
+            return;
+        }
         UsbDevice d = transport.findDevice();
-        if (d == null) { log("MD-9600/OpenGD77 USB 1FC9:0094 не найден"); return; }
+        if (d == null) {
+            log("MD-9600/OpenGD77 USB 1FC9:0094 не найден");
+            return;
+        }
+        radioBusy = true;
+        updateButtons();
         log(transport.describeDevice(d));
-        if (usbManager.hasPermission(d)) connectAndRead(d);
-        else {
+        if (usbManager.hasPermission(d)) {
+            connectAndRead(d);
+        } else {
             PendingIntent pi = PendingIntent.getBroadcast(this, 0, new Intent(USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE);
             usbManager.requestPermission(d, pi);
         }
@@ -166,6 +193,7 @@ public class MainActivity extends Activity {
         log("Подключение CDC ACM...");
         worker.execute(() -> {
             try {
+                try { transport.close(); } catch (Exception ignored) {}
                 transport.open(d);
                 log("CDC ACM открыт, 115200 8N1. Чтение Radio Info...");
                 OpenGd77Protocol.FirmwareInfo fi = protocol.readFirmwareInfo();
@@ -185,20 +213,33 @@ public class MainActivity extends Activity {
                     protocol.closeProgrammingMode();
                 }
                 updatePlan = null;
-                log("Чтение завершено. Для разрешения записи выполните Dry Run.");
-                updateButtons();
+                log("Чтение завершено. Dry Run готов к запуску.");
             } catch (Exception e) {
                 log("USB/read error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 originalAdditional = null;
                 updatePlan = null;
                 try { transport.close(); } catch (Exception ignored) {}
+            } finally {
+                radioBusy = false;
                 updateButtons();
             }
         });
     }
 
     private void runDryRun() {
-        if (prepared == null || originalAdditional == null) return;
+        if (radioBusy) {
+            log("Dry Run: дождитесь завершения чтения радиостанции.");
+            return;
+        }
+        if (prepared == null) {
+            log("Dry Run: сначала загрузите TLE.");
+            return;
+        }
+        if (originalAdditional == null) {
+            log("Dry Run: сначала подключите MD-9600 и выполните чтение.");
+            return;
+        }
+
         dryRunButton.setEnabled(false);
         updateButton.setEnabled(false);
         worker.execute(() -> {
@@ -239,14 +280,14 @@ public class MainActivity extends Activity {
         }
         b.append("Операция записи: ").append(plan.changedSectorIndexes.size()).append(" sector(s), ")
                 .append(plan.changedSectorIndexes.size() * AdditionalSettingsImage.SECTOR_SIZE).append(" bytes\n");
-        b.append("Проверка границ TLV: OK — за пределами Satellite payload изменений нет.\n");
+        b.append("Проверка границ TLV: OK — изменяться могут только орбитальные байты 0x08..0x2F существующих записей.\n");
         if (plan.changedBytes == 0) b.append("Keps уже совпадают — запись не требуется.\n");
         else b.append("Dry Run OK. Кнопка записи разблокирована.\n");
         return b.toString();
     }
 
     private void confirmUpdate() {
-        if (updatePlan == null || updatePlan.changedBytes == 0) return;
+        if (updatePlan == null || updatePlan.changedBytes == 0 || radioBusy) return;
         final UpdatePlan plan = updatePlan;
         StringBuilder message = new StringBuilder();
         message.append("Dry Run успешно завершён.\n\nИзменённых байт: ").append(plan.changedBytes)
@@ -261,8 +302,8 @@ public class MainActivity extends Activity {
     }
 
     private void writeUpdate(UpdatePlan plan) {
-        dryRunButton.setEnabled(false);
-        updateButton.setEnabled(false);
+        radioBusy = true;
+        updateButtons();
         worker.execute(() -> {
             try {
                 log("\nКонтроль перед записью: повторное чтение 0x20000..0x21FFF...");
@@ -322,6 +363,7 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 log("ОШИБКА ЗАПИСИ/ПРОВЕРКИ: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             } finally {
+                radioBusy = false;
                 updateButtons();
             }
         });
@@ -335,8 +377,9 @@ public class MainActivity extends Activity {
 
     private void updateButtons() {
         runOnUiThread(() -> {
-            dryRunButton.setEnabled(prepared != null && originalAdditional != null);
-            updateButton.setEnabled(updatePlan != null && updatePlan.changedBytes > 0);
+            connectButton.setEnabled(!radioBusy);
+            dryRunButton.setEnabled(!radioBusy);
+            updateButton.setEnabled(!radioBusy && updatePlan != null && updatePlan.changedBytes > 0);
         });
     }
 
