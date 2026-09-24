@@ -51,15 +51,25 @@ public class MainActivity extends Activity {
     private UpdatePlan updatePlan;
     private OpenGd77Protocol.FirmwareInfo firmwareInfo;
     private volatile boolean radioBusy = false;
+    private volatile boolean usbPermissionPending = false;
+    private UsbDevice pendingPermissionDevice;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             if (!USB_PERMISSION.equals(intent.getAction())) return;
+
+            boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
             UsbDevice d = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) && d != null) {
+            if (d == null) d = pendingPermissionDevice;
+
+            usbPermissionPending = false;
+            pendingPermissionDevice = null;
+
+            if (granted && d != null) {
+                log("Android разрешил доступ к USB. Продолжаю чтение...");
                 connectAndRead(d);
             } else {
-                log("USB permission denied");
+                log("USB permission denied/cancelled");
                 setBusy(false, true);
             }
         }
@@ -108,6 +118,30 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbReceiver, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(usbReceiver, f);
         updateButtons();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+
+        // OEM fallback. Normally UsbManager returns the result through usbReceiver.
+        // Some Android builds resume the Activity after the permission dialog without
+        // delivering the callback reliably. In that case use UsbManager.hasPermission().
+        if (!usbPermissionPending || pendingPermissionDevice == null) return;
+
+        UsbDevice d = pendingPermissionDevice;
+        if (usbManager.hasPermission(d)) {
+            usbPermissionPending = false;
+            pendingPermissionDevice = null;
+            log("USB permission подтвержден после системного диалога. Продолжаю чтение...");
+            connectAndRead(d);
+        } else {
+            // onResume after a dismissed/denied system permission dialog: never leave
+            // the UI permanently locked in radioBusy state.
+            usbPermissionPending = false;
+            pendingPermissionDevice = null;
+            log("USB permission не получен. Можно повторить подключение.");
+            setBusy(false, true);
+        }
     }
 
     private void downloadTle() {
@@ -177,13 +211,32 @@ public class MainActivity extends Activity {
             log("MD-9600/OpenGD77 USB 1FC9:0094 не найден");
             return;
         }
+
         setBusy(true, false);
         log(transport.describeDevice(d));
+
         if (usbManager.hasPermission(d)) {
             connectAndRead(d);
-        } else {
-            PendingIntent pi = PendingIntent.getBroadcast(this, 0, new Intent(USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE);
+            return;
+        }
+
+        pendingPermissionDevice = d;
+        usbPermissionPending = true;
+
+        Intent permissionIntent = new Intent(USB_PERMISSION);
+        permissionIntent.setPackage(getPackageName());
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? PendingIntent.FLAG_MUTABLE : 0;
+        PendingIntent pi = PendingIntent.getBroadcast(this, 0, permissionIntent, flags);
+
+        log("Запрашивается системное разрешение Android на доступ к USB...");
+        try {
             usbManager.requestPermission(d, pi);
+        } catch (Exception e) {
+            usbPermissionPending = false;
+            pendingPermissionDevice = null;
+            log("Ошибка запроса USB permission: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            setBusy(false, true);
         }
     }
 
