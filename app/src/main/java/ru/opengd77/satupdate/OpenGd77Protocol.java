@@ -27,10 +27,18 @@ final class OpenGd77Protocol {
     }
 
     byte[] readFlash(int address, int length) throws IOException {
+        return readMemory(0x01, address, length);
+    }
+
+    byte[] readEeprom(int address, int length) throws IOException {
+        return readMemory(0x02, address, length);
+    }
+
+    private byte[] readMemory(int command, int address, int length) throws IOException {
         byte[] out = new byte[length];
         for (int off = 0; off < length; off += BLOCK) {
             int n = Math.min(BLOCK, length - off);
-            byte[] part = readRaw(0x01, address + off, n);
+            byte[] part = readRaw(command, address + off, n);
             System.arraycopy(part, 0, out, off, n);
         }
         return out;
@@ -52,10 +60,14 @@ final class OpenGd77Protocol {
     }
 
     void enterProgrammingMode(boolean writing) throws IOException {
+        enterProgrammingMode(writing, writing ? "Writing Keps" : "Reading Keps");
+    }
+
+    void enterProgrammingMode(boolean writing, String operation) throws IOException {
         sendCommandFrame(0x00, 0, 0, 0, 0, 0, null); // Show CPS screen
         sendCommandFrame(0x01, 0, 0, 0, 0, 0, null); // Clear screen
-        display(0, 0, "SatUpdate");
-        display(0, 16, writing ? "Writing Keps" : "Reading Keps");
+        display(0, 0, "OpenGD77 CPS");
+        display(0, 16, operation == null ? (writing ? "Writing" : "Reading") : operation);
         sendCommandFrame(0x03, 0, 0, 0, 0, 0, null); // Render
         sendControl(writing ? 4 : 3); // red/green LED
         sendControl(2);               // save settings and VFOs, no reboot
