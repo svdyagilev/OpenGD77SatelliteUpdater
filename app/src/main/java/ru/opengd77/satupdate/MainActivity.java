@@ -59,9 +59,8 @@ public class MainActivity extends Activity {
             if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) && d != null) {
                 connectAndRead(d);
             } else {
-                radioBusy = false;
                 log("USB permission denied");
-                updateButtons();
+                setBusy(false, true);
             }
         }
     };
@@ -178,8 +177,7 @@ public class MainActivity extends Activity {
             log("MD-9600/OpenGD77 USB 1FC9:0094 не найден");
             return;
         }
-        radioBusy = true;
-        updateButtons();
+        setBusy(true, false);
         log(transport.describeDevice(d));
         if (usbManager.hasPermission(d)) {
             connectAndRead(d);
@@ -192,6 +190,7 @@ public class MainActivity extends Activity {
     private void connectAndRead(UsbDevice d) {
         log("Подключение CDC ACM...");
         worker.execute(() -> {
+            boolean ok = false;
             try {
                 try { transport.close(); } catch (Exception ignored) {}
                 transport.open(d);
@@ -213,6 +212,7 @@ public class MainActivity extends Activity {
                     protocol.closeProgrammingMode();
                 }
                 updatePlan = null;
+                ok = true;
                 log("Чтение завершено. Dry Run готов к запуску.");
             } catch (Exception e) {
                 log("USB/read error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -220,15 +220,14 @@ public class MainActivity extends Activity {
                 updatePlan = null;
                 try { transport.close(); } catch (Exception ignored) {}
             } finally {
-                radioBusy = false;
-                updateButtons();
+                setBusy(false, ok);
             }
         });
     }
 
     private void runDryRun() {
         if (radioBusy) {
-            log("Dry Run: дождитесь завершения чтения радиостанции.");
+            log("Dry Run: дождитесь завершения текущей операции.");
             return;
         }
         if (prepared == null) {
@@ -240,8 +239,7 @@ public class MainActivity extends Activity {
             return;
         }
 
-        dryRunButton.setEnabled(false);
-        updateButton.setEnabled(false);
+        setBusy(true, false);
         worker.execute(() -> {
             try {
                 UpdatePlan plan = UpdatePlan.build(originalAdditional, prepared.payload);
@@ -251,7 +249,7 @@ public class MainActivity extends Activity {
                 updatePlan = null;
                 log("DRY RUN ОШИБКА: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             } finally {
-                updateButtons();
+                setBusy(false, false);
             }
         });
     }
@@ -302,8 +300,7 @@ public class MainActivity extends Activity {
     }
 
     private void writeUpdate(UpdatePlan plan) {
-        radioBusy = true;
-        updateButtons();
+        setBusy(true, false);
         worker.execute(() -> {
             try {
                 log("\nКонтроль перед записью: повторное чтение 0x20000..0x21FFF...");
@@ -363,8 +360,7 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 log("ОШИБКА ЗАПИСИ/ПРОВЕРКИ: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             } finally {
-                radioBusy = false;
-                updateButtons();
+                setBusy(false, false);
             }
         });
     }
@@ -375,19 +371,33 @@ public class MainActivity extends Activity {
         return n;
     }
 
-    private void updateButtons() {
+    private void setBusy(final boolean busy, final boolean logReadyState) {
         runOnUiThread(() -> {
-            connectButton.setEnabled(!radioBusy);
-            dryRunButton.setEnabled(!radioBusy);
-            updateButton.setEnabled(!radioBusy && updatePlan != null && updatePlan.changedBytes > 0);
+            radioBusy = busy;
+            applyButtonState();
+            if (!busy && logReadyState) {
+                appendLogDirect("UI: Подключить=ON, Dry Run=ON");
+            }
         });
     }
 
+    private void updateButtons() {
+        runOnUiThread(this::applyButtonState);
+    }
+
+    private void applyButtonState() {
+        connectButton.setEnabled(!radioBusy);
+        dryRunButton.setEnabled(!radioBusy);
+        updateButton.setEnabled(!radioBusy && updatePlan != null && updatePlan.changedBytes > 0);
+    }
+
     private void log(final String s) {
-        runOnUiThread(() -> {
-            String old = status.getText().toString();
-            status.setText(old + "\n" + s);
-        });
+        runOnUiThread(() -> appendLogDirect(s));
+    }
+
+    private void appendLogDirect(String s) {
+        String old = status.getText().toString();
+        status.setText(old + "\n" + s);
     }
 
     @Override protected void onDestroy() {
