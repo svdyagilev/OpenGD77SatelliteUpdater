@@ -87,20 +87,13 @@
             android:layout_height="wrap_content"
             android:paddingTop="6dp"
             android:paddingBottom="8dp"
-            android:text="Кодплаг ещё не прочитан. Запись полного codeplug отключена." />
+            android:text="Channels, Zones, DMR Contacts, RX Groups и Scan Lists. Полная запись codeplug отключена." />
 
-        <Button
+        <ru.opengd77.satupdate.CodeplugReadButton
             android:id="@+id/readCodeplugButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Прочитать codeplug" />
-
-        <Button
-            android:id="@+id/openCodeplugViewerButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:enabled="false"
-            android:text="Открыть Codeplug Viewer" />
+            android:text="Прочитать и открыть codeplug" />
 
         <Button
             android:id="@+id/advancedToggleButton"
