@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.Arrays;
 
 final class Md9600Driver implements RadioDriver {
+    private static final int FLASH_CODEPLUG_BASE = 0x20000;
+
     private final OpenGd77Protocol protocol;
 
     Md9600Driver(OpenGd77Protocol protocol) {
@@ -22,6 +24,40 @@ final class Md9600Driver implements RadioDriver {
         protocol.enterProgrammingMode(false);
         try {
             return protocol.readFlash(AdditionalSettingsImage.FLASH_BASE, AdditionalSettingsImage.READ_SIZE);
+        } finally {
+            protocol.closeProgrammingMode();
+        }
+    }
+
+    @Override public CodeplugSnapshot readCodeplug(Progress progress) throws IOException {
+        if (progress == null) progress = text -> {};
+        protocol.enterProgrammingMode(false, "Reading Codeplug");
+        try {
+            progress.onMessage("Codeplug 1/7: General Settings (EEPROM 0x00E0)...");
+            byte[] general = protocol.readEeprom(0x00E0, 0x28);
+
+            progress.onMessage("Codeplug 2/7: Scan Lists (EEPROM 0x1790)...");
+            byte[] scanLists = protocol.readEeprom(0x1790, 0x1640);
+
+            progress.onMessage("Codeplug 3/7: Channels 1-128 (EEPROM 0x3780)...");
+            byte[] channelBank0 = protocol.readEeprom(0x3780, 0x1C10);
+
+            progress.onMessage("Codeplug 4/7: Zones, до 250 (EEPROM 0x8010)...");
+            byte[] zones = protocol.readEeprom(0x8010, 0xAC00);
+
+            progress.onMessage("Codeplug 5/7: Channels 129-1024 (FLASH logical 0x7B1B0)...");
+            byte[] channelBanks = protocol.readFlash(FLASH_CODEPLUG_BASE + 0x7B1B0, 0xC470);
+
+            progress.onMessage("Codeplug 6/7: DMR Contacts (FLASH logical 0x87620)...");
+            byte[] contacts = protocol.readFlash(FLASH_CODEPLUG_BASE + 0x87620, 0x6000);
+
+            progress.onMessage("Codeplug 7/7: RX Groups (FLASH logical 0x8D620)...");
+            byte[] rxGroups = protocol.readFlash(FLASH_CODEPLUG_BASE + 0x8D620, 0x1840);
+
+            CodeplugSnapshot snapshot = new CodeplugSnapshot(general, scanLists, channelBank0,
+                    zones, channelBanks, contacts, rxGroups);
+            progress.onMessage("Codeplug прочитан: " + snapshot.totalBytes() + " bytes.");
+            return snapshot;
         } finally {
             protocol.closeProgrammingMode();
         }
