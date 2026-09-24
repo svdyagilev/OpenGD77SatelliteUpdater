@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- OpenGD77 USB serial interface: VID 0x1FC9, PID 0x0094 -->
+    <usb-device vendor-id="8137" product-id="148" />
+</resources>

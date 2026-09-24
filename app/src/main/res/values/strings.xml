@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenGD77 SatUpdate</string>
+    <string name="source_celestrak">CelesTrak — amateur</string>
+    <string name="source_r4uab">R4UAB — satonline.txt</string>
+    <string name="source_custom">Свой URL</string>
+</resources>
