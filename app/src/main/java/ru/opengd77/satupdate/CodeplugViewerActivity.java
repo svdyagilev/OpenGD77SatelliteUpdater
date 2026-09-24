@@ -2,6 +2,7 @@ package ru.opengd77.satupdate;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.AdapterView;
@@ -29,7 +30,7 @@ public class CodeplugViewerActivity extends Activity {
         summaryText = findViewById(R.id.codeplugSummaryText);
         categorySpinner = findViewById(R.id.codeplugCategorySpinner);
         listView = findViewById(R.id.codeplugList);
-        findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> finish());
+        findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> returnToMain());
 
         if (model == null) {
             summaryText.setText("Codeplug не загружен. Вернитесь назад и выполните чтение радиостанции.");
@@ -53,6 +54,17 @@ public class CodeplugViewerActivity extends Activity {
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
         listView.setOnItemClickListener((parent, view, position, id) -> showDetails(visibleObjects.get(position)));
+    }
+
+    @Override public void onBackPressed() {
+        returnToMain();
+    }
+
+    private void returnToMain() {
+        Intent i = new Intent(this, MainActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(i);
+        finish();
     }
 
     private void showCategory(int category) {
