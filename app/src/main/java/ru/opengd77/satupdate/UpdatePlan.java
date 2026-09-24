@@ -6,6 +6,9 @@ import java.util.Arrays;
 import java.util.List;
 
 final class UpdatePlan {
+    private static final int ORBIT_OFFSET = 0x08;
+    private static final int ORBIT_LENGTH = 40;
+
     final byte[] beforeImage;
     final byte[] afterImage;
     final AdditionalSettingsImage.Tlv satelliteTlv;
@@ -33,11 +36,11 @@ final class UpdatePlan {
         this.changedSectorIndexes = changedSectorIndexes;
     }
 
-    static UpdatePlan build(byte[] currentImage, byte[] newSatellitePayload) {
+    static UpdatePlan build(byte[] currentImage, byte[] candidateSatellitePayload) {
         if (currentImage == null || currentImage.length != AdditionalSettingsImage.READ_SIZE) {
             throw new IllegalArgumentException("Current image must be exactly 0x2000 bytes");
         }
-        if (newSatellitePayload == null || newSatellitePayload.length != OpenGd77SatelliteEncoder.SATELLITE_PAYLOAD_SIZE) {
+        if (candidateSatellitePayload == null || candidateSatellitePayload.length != OpenGd77SatelliteEncoder.SATELLITE_PAYLOAD_SIZE) {
             throw new IllegalArgumentException("Satellite payload must be exactly 0x09D8 bytes");
         }
 
@@ -52,38 +55,62 @@ final class UpdatePlan {
             throw new IllegalStateException("Satellite TLV is outside protected read window");
         }
 
-        AdditionalSettingsImage afterParsed = new AdditionalSettingsImage(before);
-        afterParsed.replaceSatellitePayload(newSatellitePayload);
-        byte[] after = afterParsed.bytes();
-
         int payloadStart = sat.payloadOffset;
         int payloadEnd = sat.payloadOffset + sat.payloadLength; // exclusive
+        byte[] currentPayload = Arrays.copyOfRange(before, payloadStart, payloadEnd);
+        byte[] safePayload = Arrays.copyOf(currentPayload, currentPayload.length);
+
+        // Safety rule: preserve the exact satellite bank already present in the radio.
+        // Candidate records are used only as a source for bytes 0x08..0x2F (40-byte orbital data).
+        // Name, order, frequencies, tones, APRS data, record count and the 20-byte tail stay untouched.
+        for (int i = 0; i < OpenGd77SatelliteEncoder.MAX_SATELLITES; i++) {
+            int currentOff = i * OpenGd77SatelliteEncoder.RECORD_SIZE;
+            String currentName = recordName(currentPayload, currentOff);
+            if (currentName.isEmpty()) continue;
+
+            int candidateOff = findRecordOffsetByName(candidateSatellitePayload, currentName);
+            if (candidateOff < 0) continue; // no fresh/valid TLE candidate: retain existing orbit
+
+            System.arraycopy(candidateSatellitePayload, candidateOff + ORBIT_OFFSET,
+                    safePayload, currentOff + ORBIT_OFFSET, ORBIT_LENGTH);
+        }
+
+        AdditionalSettingsImage afterParsed = new AdditionalSettingsImage(before);
+        afterParsed.replaceSatellitePayload(safePayload);
+        byte[] after = afterParsed.bytes();
+
         int changedBytes = 0;
         for (int i = 0; i < before.length; i++) {
-            if (before[i] != after[i]) {
-                changedBytes++;
-                if (i < payloadStart || i >= payloadEnd) {
-                    throw new IllegalStateException("Dry-run changed byte outside Satellite TLV at +0x" + Integer.toHexString(i));
-                }
+            if (before[i] == after[i]) continue;
+            changedBytes++;
+            if (i < payloadStart || i >= payloadEnd) {
+                throw new IllegalStateException("Dry-run changed byte outside Satellite TLV at +0x" + Integer.toHexString(i));
+            }
+            int rel = i - payloadStart;
+            if (!isOrbitalByte(rel)) {
+                throw new IllegalStateException("Dry-run attempted to change non-orbital satellite byte at payload +0x"
+                        + Integer.toHexString(rel));
             }
         }
 
-        byte[] currentPayload = Arrays.copyOfRange(before, payloadStart, payloadEnd);
         int currentCount = countRecords(currentPayload);
-        int newCount = countRecords(newSatellitePayload);
+        int newCount = countRecords(safePayload);
+        if (newCount != currentCount) {
+            throw new IllegalStateException("Satellite record count changed unexpectedly");
+        }
 
         List<String> changedRecords = new ArrayList<>();
         for (int i = 0; i < OpenGd77SatelliteEncoder.MAX_SATELLITES; i++) {
             int off = i * OpenGd77SatelliteEncoder.RECORD_SIZE;
             byte[] oldRec = Arrays.copyOfRange(currentPayload, off, off + OpenGd77SatelliteEncoder.RECORD_SIZE);
-            byte[] newRec = Arrays.copyOfRange(newSatellitePayload, off, off + OpenGd77SatelliteEncoder.RECORD_SIZE);
+            byte[] newRec = Arrays.copyOfRange(safePayload, off, off + OpenGd77SatelliteEncoder.RECORD_SIZE);
             if (Arrays.equals(oldRec, newRec)) continue;
-            String oldName = recordName(oldRec);
-            String newName = recordName(newRec);
-            if (oldName.equals(newName) && !oldName.isEmpty()) changedRecords.add(oldName);
-            else if (oldName.isEmpty() && !newName.isEmpty()) changedRecords.add("+ " + newName);
-            else if (!oldName.isEmpty() && newName.isEmpty()) changedRecords.add("- " + oldName);
-            else changedRecords.add(oldName + " -> " + newName);
+            String oldName = recordName(oldRec, 0);
+            String newName = recordName(newRec, 0);
+            if (!oldName.equals(newName)) {
+                throw new IllegalStateException("Satellite name/order changed unexpectedly: " + oldName + " -> " + newName);
+            }
+            changedRecords.add(oldName);
         }
 
         List<Integer> changedSectors = new ArrayList<>();
@@ -111,22 +138,33 @@ final class UpdatePlan {
         return satelliteAbsolutePayloadStart() + satelliteTlv.payloadLength - 1;
     }
 
+    private static boolean isOrbitalByte(int payloadRelativeOffset) {
+        int recordsBytes = OpenGd77SatelliteEncoder.MAX_SATELLITES * OpenGd77SatelliteEncoder.RECORD_SIZE;
+        if (payloadRelativeOffset < 0 || payloadRelativeOffset >= recordsBytes) return false;
+        int withinRecord = payloadRelativeOffset % OpenGd77SatelliteEncoder.RECORD_SIZE;
+        return withinRecord >= ORBIT_OFFSET && withinRecord < ORBIT_OFFSET + ORBIT_LENGTH;
+    }
+
+    private static int findRecordOffsetByName(byte[] payload, String wantedName) {
+        for (int i = 0; i < OpenGd77SatelliteEncoder.MAX_SATELLITES; i++) {
+            int off = i * OpenGd77SatelliteEncoder.RECORD_SIZE;
+            if (wantedName.equals(recordName(payload, off))) return off;
+        }
+        return -1;
+    }
+
     private static int countRecords(byte[] payload) {
         int count = 0;
         for (int i = 0; i < OpenGd77SatelliteEncoder.MAX_SATELLITES; i++) {
             int off = i * OpenGd77SatelliteEncoder.RECORD_SIZE;
-            boolean nonzero = false;
-            for (int j = 0; j < 8; j++) {
-                if (payload[off + j] != 0) { nonzero = true; break; }
-            }
-            if (nonzero) count++;
+            if (!recordName(payload, off).isEmpty()) count++;
         }
         return count;
     }
 
-    private static String recordName(byte[] record) {
+    private static String recordName(byte[] payload, int offset) {
         int end = 0;
-        while (end < 8 && record[end] != 0) end++;
-        return new String(record, 0, end, StandardCharsets.US_ASCII).trim();
+        while (end < 8 && payload[offset + end] != 0) end++;
+        return new String(payload, offset, end, StandardCharsets.US_ASCII).trim();
     }
 }
