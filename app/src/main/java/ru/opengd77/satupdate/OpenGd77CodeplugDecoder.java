@@ -26,6 +26,10 @@ final class OpenGd77CodeplugDecoder {
     private static final int SCAN_LIST_SIZE = 0x58;
     private static final int SCAN_MAP_SIZE = 0x40;
     private static final int MAX_SCAN_LISTS = 64;
+    private static final int CSS_NONE = 0xFFFF;
+    private static final int CSS_DCS = 0x8000;
+    private static final int CSS_DCS_INVERTED = 0x4000;
+    private static final int CSS_DCS_MASK = CSS_DCS | CSS_DCS_INVERTED;
     private static final Charset WINDOWS_1251 = Charset.forName("windows-1251");
 
     private OpenGd77CodeplugDecoder() {}
@@ -43,8 +47,6 @@ final class OpenGd77CodeplugDecoder {
     private static CodeplugModel.General decodeGeneral(byte[] b) {
         if (b.length < 12) throw new IllegalArgumentException("General settings block too short");
         String name = codeplugText(b, 0, 8);
-        // OpenGD77 firmware reads these 4 bytes then applies byteSwap32() + bcd2int().
-        // In the codeplug byte stream this is therefore an 8-digit packed BCD value in BE order.
         long dmrId = bcd8be(b, 8);
         return new CodeplugModel.General(name, dmrId);
     }
@@ -64,6 +66,8 @@ final class OpenGd77CodeplugDecoder {
                 long rx = bcd8le(src, off + 0x10) * 10L;
                 long tx = bcd8le(src, off + 0x14) * 10L;
                 boolean digital = (src[off + 0x18] & 0xff) == 1;
+                CodeplugModel.Tone rxTone = decodeTone(ByteUtil.u16le(src, off + 0x20));
+                CodeplugModel.Tone txTone = decodeTone(ByteUtil.u16le(src, off + 0x22));
                 int rxGroup = src[off + 0x2B] & 0xff;
                 int cc = src[off + 0x2C] & 0xff;
                 int contact = ByteUtil.u16le(src, off + 0x2E);
@@ -72,10 +76,41 @@ final class OpenGd77CodeplugDecoder {
                 boolean rxOnly = (flag4 & 0x04) != 0;
                 boolean wide25 = (flag4 & 0x02) != 0;
                 out.add(new CodeplugModel.Channel(bank * CHANNELS_PER_BANK + i + 1,
-                        name, rx, tx, digital, cc, ts, contact, rxGroup, rxOnly, wide25));
+                        name, rx, tx, digital, cc, ts, contact, rxGroup, rxOnly, wide25, rxTone, txTone));
             }
         }
         return out;
+    }
+
+    static CodeplugModel.Tone decodeTone(int raw) {
+        raw &= 0xffff;
+        if (raw == 0 || raw == CSS_NONE) {
+            return new CodeplugModel.Tone(CodeplugModel.Tone.Type.NONE, 0, raw);
+        }
+        if ((raw & CSS_DCS_MASK) == 0) {
+            int ctcssTenths = bcd16(raw);
+            if (ctcssTenths < 0) {
+                return new CodeplugModel.Tone(CodeplugModel.Tone.Type.UNKNOWN, 0, raw);
+            }
+            return new CodeplugModel.Tone(CodeplugModel.Tone.Type.CTCSS, ctcssTenths, raw);
+        }
+        int dcsCode = raw & ~CSS_DCS_MASK;
+        CodeplugModel.Tone.Type type = (raw & CSS_DCS_INVERTED) != 0
+                ? CodeplugModel.Tone.Type.DCS_INVERTED
+                : CodeplugModel.Tone.Type.DCS_NORMAL;
+        return new CodeplugModel.Tone(type, dcsCode, raw);
+    }
+
+    private static int bcd16(int raw) {
+        int value = 0;
+        int mul = 1;
+        for (int i = 0; i < 4; i++) {
+            int nibble = (raw >>> (i * 4)) & 0x0f;
+            if (nibble > 9) return -1;
+            value += nibble * mul;
+            mul *= 10;
+        }
+        return value;
     }
 
     private static List<CodeplugModel.Contact> decodeContacts(byte[] b) {
@@ -163,11 +198,6 @@ final class OpenGd77CodeplugDecoder {
         return ((b[byteOffset] >>> bit) & 1) != 0;
     }
 
-    /**
-     * OpenGD77 stores codeplug labels as raw bytes terminated/padded by 0x00/0xFF.
-     * Russian OpenGD77 builds/CPS use UTF-8 for Cyrillic labels. Keep a Windows-1251 fallback
-     * for older/localized codeplugs while preserving ASCII exactly.
-     */
     private static String codeplugText(byte[] b, int offset, int max) {
         int end = 0;
         while (end < max) {
