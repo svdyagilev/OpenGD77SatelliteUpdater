@@ -2,6 +2,7 @@ package ru.opengd77.satupdate;
 
 import org.junit.Test;
 
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.*;
@@ -10,7 +11,7 @@ public class OpenGd77CodeplugDecoderTest {
     @Test public void decodesCoreCodeplugSections() {
         byte[] general = new byte[0x28];
         putAscii(general, 0, "R3TEST");
-        ByteUtil.putU32le(general, 8, 2501234);
+        putBcd8Be(general, 8, 2501234);
 
         byte[] scans = new byte[0x1640];
         scans[0] = 1;
@@ -81,9 +82,55 @@ public class OpenGd77CodeplugDecoderTest {
         assertEquals(2, model.scanLists.get(0).channelIndices.size());
     }
 
+    @Test public void decodesRussianUtf8AndRealDmrId() {
+        byte[] general = new byte[0x28];
+        putUtf8(general, 0, "RUS");
+        putBcd8Be(general, 8, 4010151);
+
+        byte[] scans = new byte[0x1640];
+        byte[] bank0 = new byte[0x1c10];
+        bank0[0] = 0x01;
+        int ch0 = 0x10;
+        putUtf8(bank0, ch0, "РЕПИТЕР");
+        putBcd8Le(bank0, ch0 + 0x10, 43850000);
+        putBcd8Le(bank0, ch0 + 0x14, 43090000);
+
+        byte[] banks = new byte[7 * 0x1c10];
+
+        byte[] zones = new byte[0xAC00];
+        zones[0] = 0x01;
+        int zone = 0x20;
+        putUtf8(zones, zone, "ГОРОД");
+        ByteUtil.putU16le(zones, zone + 0x10, 1);
+
+        byte[] contacts = new byte[0x6000];
+        putWin1251(contacts, 0, "ТЕСТ");
+        putBcd8Be(contacts, 0x10, 4010151);
+
+        byte[] rxGroups = new byte[0x1840];
+
+        CodeplugModel model = OpenGd77CodeplugDecoder.decode(new CodeplugSnapshot(
+                general, scans, bank0, zones, banks, contacts, rxGroups));
+
+        assertEquals(4010151, model.general.dmrId);
+        assertEquals("РЕПИТЕР", model.channels.get(0).name);
+        assertEquals("ГОРОД", model.zones.get(0).name);
+        assertEquals("ТЕСТ", model.contacts.get(0).name);
+    }
+
     private static void putAscii(byte[] b, int off, String s) {
         byte[] x = s.getBytes(StandardCharsets.US_ASCII);
         System.arraycopy(x, 0, b, off, x.length);
+    }
+
+    private static void putUtf8(byte[] b, int off, String s) {
+        byte[] x = s.getBytes(StandardCharsets.UTF_8);
+        System.arraycopy(x, 0, b, off, Math.min(x.length, 16));
+    }
+
+    private static void putWin1251(byte[] b, int off, String s) {
+        byte[] x = s.getBytes(Charset.forName("windows-1251"));
+        System.arraycopy(x, 0, b, off, Math.min(x.length, 16));
     }
 
     private static void putBcd8Le(byte[] b, int off, int value) {
