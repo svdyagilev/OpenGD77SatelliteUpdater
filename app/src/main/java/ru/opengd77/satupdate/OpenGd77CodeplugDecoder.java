@@ -1,5 +1,9 @@
 package ru.opengd77.satupdate;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +26,7 @@ final class OpenGd77CodeplugDecoder {
     private static final int SCAN_LIST_SIZE = 0x58;
     private static final int SCAN_MAP_SIZE = 0x40;
     private static final int MAX_SCAN_LISTS = 64;
+    private static final Charset WINDOWS_1251 = Charset.forName("windows-1251");
 
     private OpenGd77CodeplugDecoder() {}
 
@@ -37,8 +42,10 @@ final class OpenGd77CodeplugDecoder {
 
     private static CodeplugModel.General decodeGeneral(byte[] b) {
         if (b.length < 12) throw new IllegalArgumentException("General settings block too short");
-        String name = ascii(b, 0, 8);
-        long dmrId = ByteUtil.u32le(b, 8);
+        String name = codeplugText(b, 0, 8);
+        // OpenGD77 firmware reads these 4 bytes then applies byteSwap32() + bcd2int().
+        // In the codeplug byte stream this is therefore an 8-digit packed BCD value in BE order.
+        long dmrId = bcd8be(b, 8);
         return new CodeplugModel.General(name, dmrId);
     }
 
@@ -52,7 +59,7 @@ final class OpenGd77CodeplugDecoder {
             for (int i = 0; i < CHANNELS_PER_BANK; i++) {
                 if (!bit(src, base + i / 8, i % 8)) continue;
                 int off = base + 0x10 + i * CHANNEL_SIZE;
-                String name = ascii(src, off, 16);
+                String name = codeplugText(src, off, 16);
                 if (name.isEmpty()) name = "CH " + (bank * CHANNELS_PER_BANK + i + 1);
                 long rx = bcd8le(src, off + 0x10) * 10L;
                 long tx = bcd8le(src, off + 0x14) * 10L;
@@ -76,7 +83,7 @@ final class OpenGd77CodeplugDecoder {
         List<CodeplugModel.Contact> out = new ArrayList<>();
         for (int i = 0; i < MAX_CONTACTS; i++) {
             int off = i * CONTACT_SIZE;
-            String name = ascii(b, off, 16);
+            String name = codeplugText(b, off, 16);
             if (name.isEmpty()) continue;
             long number = bcd8be(b, off + 0x10);
             int type = b[off + 0x14] & 0xff;
@@ -93,7 +100,7 @@ final class OpenGd77CodeplugDecoder {
         for (int i = 0; i < MAX_ZONES; i++) {
             if (!bit(b, i / 8, i % 8)) continue;
             int off = ZONE_BITMAP_SIZE + i * ZONE_SIZE;
-            String name = ascii(b, off, 16);
+            String name = codeplugText(b, off, 16);
             if (name.isEmpty()) continue;
             List<Integer> members = new ArrayList<>();
             for (int n = 0; n < 80; n++) {
@@ -114,7 +121,7 @@ final class OpenGd77CodeplugDecoder {
             if (encodedLen == 0) continue;
             int count = Math.min(32, Math.max(0, encodedLen - 1));
             int off = 0x80 + i * RX_GROUP_SIZE;
-            String name = ascii(b, off, 16);
+            String name = codeplugText(b, off, 16);
             if (name.isEmpty()) continue;
             List<Integer> contacts = new ArrayList<>();
             for (int n = 0; n < count; n++) {
@@ -133,7 +140,7 @@ final class OpenGd77CodeplugDecoder {
         for (int i = 0; i < MAX_SCAN_LISTS; i++) {
             if ((b[i] & 0xff) == 0) continue;
             int off = SCAN_MAP_SIZE + i * SCAN_LIST_SIZE;
-            String name = ascii(b, off, 15);
+            String name = codeplugText(b, off, 15);
             if (name.isEmpty()) continue;
             List<Integer> members = new ArrayList<>();
             for (int n = 0; n < 32; n++) {
@@ -156,14 +163,31 @@ final class OpenGd77CodeplugDecoder {
         return ((b[byteOffset] >>> bit) & 1) != 0;
     }
 
-    private static String ascii(byte[] b, int offset, int max) {
+    /**
+     * OpenGD77 stores codeplug labels as raw bytes terminated/padded by 0x00/0xFF.
+     * Russian OpenGD77 builds/CPS use UTF-8 for Cyrillic labels. Keep a Windows-1251 fallback
+     * for older/localized codeplugs while preserving ASCII exactly.
+     */
+    private static String codeplugText(byte[] b, int offset, int max) {
         int end = 0;
         while (end < max) {
             int v = b[offset + end] & 0xff;
             if (v == 0 || v == 0xff) break;
             end++;
         }
-        return new String(b, offset, end, StandardCharsets.ISO_8859_1).trim();
+        if (end == 0) return "";
+
+        ByteBuffer data = ByteBuffer.wrap(b, offset, end);
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(data)
+                    .toString()
+                    .trim();
+        } catch (CharacterCodingException invalidUtf8) {
+            return new String(b, offset, end, WINDOWS_1251).trim();
+        }
     }
 
     private static long bcd8le(byte[] b, int o) {
