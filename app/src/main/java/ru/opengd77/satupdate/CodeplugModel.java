@@ -15,6 +15,35 @@ final class CodeplugModel {
         }
     }
 
+    static final class Tone {
+        enum Type { NONE, CTCSS, DCS_NORMAL, DCS_INVERTED, UNKNOWN }
+
+        final Type type;
+        final int value;
+        final int raw;
+
+        Tone(Type type, int value, int raw) {
+            this.type = type;
+            this.value = value;
+            this.raw = raw;
+        }
+
+        String displayText() {
+            switch (type) {
+                case NONE:
+                    return "нет";
+                case CTCSS:
+                    return String.format(Locale.US, "CTCSS %.1f Hz", value / 10.0);
+                case DCS_NORMAL:
+                    return String.format(Locale.US, "DCS %03X N", value);
+                case DCS_INVERTED:
+                    return String.format(Locale.US, "DCS %03X I", value);
+                default:
+                    return String.format(Locale.US, "RAW 0x%04X", raw & 0xffff);
+            }
+        }
+    }
+
     static final class Channel {
         final int index;
         final String name;
@@ -27,10 +56,12 @@ final class CodeplugModel {
         final int rxGroupIndex;
         final boolean rxOnly;
         final boolean wide25k;
+        final Tone rxTone;
+        final Tone txTone;
 
         Channel(int index, String name, long rxHz, long txHz, boolean digital,
                 int colorCode, int timeSlot, int contactIndex, int rxGroupIndex,
-                boolean rxOnly, boolean wide25k) {
+                boolean rxOnly, boolean wide25k, Tone rxTone, Tone txTone) {
             this.index = index;
             this.name = name;
             this.rxHz = rxHz;
@@ -42,6 +73,8 @@ final class CodeplugModel {
             this.rxGroupIndex = rxGroupIndex;
             this.rxOnly = rxOnly;
             this.wide25k = wide25k;
+            this.rxTone = rxTone;
+            this.txTone = txTone;
         }
 
         String oneLine() {
@@ -52,7 +85,12 @@ final class CodeplugModel {
                         + (contactIndex > 0 ? " C#" + contactIndex : "")
                         + (rxGroupIndex > 0 ? " RXG#" + rxGroupIndex : "");
             }
-            return base + "  FM " + (wide25k ? "25k" : "12.5k") + (rxOnly ? " RX-only" : "");
+            String tones = "";
+            if (rxTone.type != Tone.Type.NONE || txTone.type != Tone.Type.NONE) {
+                tones = "  RX:" + rxTone.displayText() + " TX:" + txTone.displayText();
+            }
+            return base + "  FM " + (wide25k ? "25k" : "12.5k")
+                    + (rxOnly ? " RX-only" : "") + tones;
         }
     }
 
