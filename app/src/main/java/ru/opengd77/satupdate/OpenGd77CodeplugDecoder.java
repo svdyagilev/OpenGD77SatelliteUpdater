@@ -1,10 +1,6 @@
 package ru.opengd77.satupdate;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +26,8 @@ final class OpenGd77CodeplugDecoder {
     private static final int CSS_DCS = 0x8000;
     private static final int CSS_DCS_INVERTED = 0x4000;
     private static final int CSS_DCS_MASK = CSS_DCS | CSS_DCS_INVERTED;
+    private static final int CHANNEL_FLAG_NO_BEEP = 0x40;
+    private static final int CHANNEL_FLAG_NO_ECO = 0x20;
     private static final Charset WINDOWS_1251 = Charset.forName("windows-1251");
 
     private OpenGd77CodeplugDecoder() {}
@@ -66,8 +64,12 @@ final class OpenGd77CodeplugDecoder {
                 long rx = bcd8le(src, off + 0x10) * 10L;
                 long tx = bcd8le(src, off + 0x14) * 10L;
                 boolean digital = (src[off + 0x18] & 0xff) == 1;
+                int powerSetting = src[off + 0x19] & 0xff;
                 CodeplugModel.Tone rxTone = decodeTone(ByteUtil.u16le(src, off + 0x20));
                 CodeplugModel.Tone txTone = decodeTone(ByteUtil.u16le(src, off + 0x22));
+                int libreFlags = src[off + 0x26] & 0xff;
+                boolean beepEnabled = (libreFlags & CHANNEL_FLAG_NO_BEEP) == 0;
+                boolean ecoEnabled = (libreFlags & CHANNEL_FLAG_NO_ECO) == 0;
                 int rxGroup = src[off + 0x2B] & 0xff;
                 int cc = src[off + 0x2C] & 0xff;
                 int contact = ByteUtil.u16le(src, off + 0x2E);
@@ -76,7 +78,8 @@ final class OpenGd77CodeplugDecoder {
                 boolean rxOnly = (flag4 & 0x04) != 0;
                 boolean wide25 = (flag4 & 0x02) != 0;
                 out.add(new CodeplugModel.Channel(bank * CHANNELS_PER_BANK + i + 1,
-                        name, rx, tx, digital, cc, ts, contact, rxGroup, rxOnly, wide25, rxTone, txTone));
+                        name, rx, tx, digital, cc, ts, contact, rxGroup, rxOnly, wide25,
+                        rxTone, txTone, powerSetting, beepEnabled, ecoEnabled));
             }
         }
         return out;
@@ -198,7 +201,12 @@ final class OpenGd77CodeplugDecoder {
         return ((b[byteOffset] >>> bit) & 1) != 0;
     }
 
-    private static String codeplugText(byte[] b, int offset, int max) {
+    /**
+     * OpenGD77RUS CPS stores labels as Windows-1251. Because 0xFF is also the
+     * unused-byte filler, CPS stores the CP1251 lowercase 'я' byte (0xFF) as
+     * 0x7F and maps it back to 0xFF while decoding.
+     */
+    static String codeplugText(byte[] b, int offset, int max) {
         int end = 0;
         while (end < max) {
             int v = b[offset + end] & 0xff;
@@ -207,17 +215,12 @@ final class OpenGd77CodeplugDecoder {
         }
         if (end == 0) return "";
 
-        ByteBuffer data = ByteBuffer.wrap(b, offset, end);
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(data)
-                    .toString()
-                    .trim();
-        } catch (CharacterCodingException invalidUtf8) {
-            return new String(b, offset, end, WINDOWS_1251).trim();
+        byte[] text = new byte[end];
+        for (int i = 0; i < end; i++) {
+            int v = b[offset + i] & 0xff;
+            text[i] = (byte)(v == 0x7f ? 0xff : v);
         }
+        return new String(text, WINDOWS_1251).trim();
     }
 
     private static long bcd8le(byte[] b, int o) {
