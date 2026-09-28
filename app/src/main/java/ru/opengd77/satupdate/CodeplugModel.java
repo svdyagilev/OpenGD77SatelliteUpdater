@@ -45,6 +45,11 @@ final class CodeplugModel {
     }
 
     static final class Channel {
+        private static final String[] MD9600_POWER_LEVELS = {
+                "от Master", "100 mW", "250 mW", "500 mW", "750 mW",
+                "1 W", "5 W", "10 W", "25 W", "40 W", "+W-"
+        };
+
         final int index;
         final String name;
         final long rxHz;
@@ -58,10 +63,14 @@ final class CodeplugModel {
         final boolean wide25k;
         final Tone rxTone;
         final Tone txTone;
+        final int powerSetting;
+        final boolean beepEnabled;
+        final boolean ecoEnabled;
 
         Channel(int index, String name, long rxHz, long txHz, boolean digital,
                 int colorCode, int timeSlot, int contactIndex, int rxGroupIndex,
-                boolean rxOnly, boolean wide25k, Tone rxTone, Tone txTone) {
+                boolean rxOnly, boolean wide25k, Tone rxTone, Tone txTone,
+                int powerSetting, boolean beepEnabled, boolean ecoEnabled) {
             this.index = index;
             this.name = name;
             this.rxHz = rxHz;
@@ -75,6 +84,16 @@ final class CodeplugModel {
             this.wide25k = wide25k;
             this.rxTone = rxTone;
             this.txTone = txTone;
+            this.powerSetting = powerSetting;
+            this.beepEnabled = beepEnabled;
+            this.ecoEnabled = ecoEnabled;
+        }
+
+        String powerText() {
+            if (powerSetting >= 0 && powerSetting < MD9600_POWER_LEVELS.length) {
+                return MD9600_POWER_LEVELS[powerSetting];
+            }
+            return "RAW " + powerSetting;
         }
 
         String oneLine() {
@@ -83,14 +102,15 @@ final class CodeplugModel {
             if (digital) {
                 return base + "  DMR CC" + colorCode + " TS" + timeSlot
                         + (contactIndex > 0 ? " C#" + contactIndex : "")
-                        + (rxGroupIndex > 0 ? " RXG#" + rxGroupIndex : "");
+                        + (rxGroupIndex > 0 ? " RXG#" + rxGroupIndex : "")
+                        + "  P:" + powerText();
             }
             String tones = "";
             if (rxTone.type != Tone.Type.NONE || txTone.type != Tone.Type.NONE) {
                 tones = "  RX:" + rxTone.displayText() + " TX:" + txTone.displayText();
             }
             return base + "  FM " + (wide25k ? "25k" : "12.5k")
-                    + (rxOnly ? " RX-only" : "") + tones;
+                    + (rxOnly ? " RX-only" : "") + tones + "  P:" + powerText();
         }
     }
 
