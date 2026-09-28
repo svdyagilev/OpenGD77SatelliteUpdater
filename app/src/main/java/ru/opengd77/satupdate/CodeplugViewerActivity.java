@@ -135,6 +135,9 @@ public class CodeplugViewerActivity extends Activity {
                         + "\nBandwidth: " + (c.wide25k ? "25 kHz" : "12.5 kHz")
                         + "\nRX only: " + (c.rxOnly ? "да" : "нет");
             }
+            message += "\nМощность: " + c.powerText()
+                    + "\nБипер: " + (c.beepEnabled ? "включён" : "выключен")
+                    + "\nЭкономайзер: " + (c.ecoEnabled ? "включён" : "выключен");
         } else if (obj instanceof CodeplugModel.Zone) {
             CodeplugModel.Zone z = (CodeplugModel.Zone)obj;
             title = "Zone " + z.index + " • " + z.name;
