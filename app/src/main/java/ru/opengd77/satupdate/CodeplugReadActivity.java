@@ -16,9 +16,7 @@ import android.widget.TextView;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Isolated read-only codeplug session. It owns its USB connection and never exposes a write path.
- */
+/** Isolated read-only codeplug session. It owns its USB connection and never exposes a write path. */
 public class CodeplugReadActivity extends Activity {
     private static final String USB_PERMISSION = "ru.opengd77.satupdate.USB_PERMISSION_CODEPLUG";
 
@@ -70,7 +68,8 @@ public class CodeplugReadActivity extends Activity {
         else registerReceiver(usbReceiver, f);
 
         log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
-        log("v0.5 Codeplug Viewer • только чтение");
+        log("v0.5.4 Deep Codeplug Audit • только чтение");
+        log("Читаются известные EEPROM/FLASH блоки, Device Info, VFO, APRS, DTMF и Satellites.");
         log("Полная запись codeplug в этой версии отключена.");
 
         getWindow().getDecorView().post(this::beginRead);
@@ -88,9 +87,7 @@ public class CodeplugReadActivity extends Activity {
         }
     }
 
-    @Override public void onBackPressed() {
-        returnToMain();
-    }
+    @Override public void onBackPressed() { returnToMain(); }
 
     private void returnToMain() {
         try { transport.close(); } catch (Exception ignored) {}
@@ -143,7 +140,7 @@ public class CodeplugReadActivity extends Activity {
                 transport.open(d);
                 RadioDriver.Identity identity = driver.identify();
                 log(identity.compactText());
-                log("Начинаю чтение основных блоков codeplug...");
+                log("Начинаю глубокое read-only чтение codeplug...");
 
                 CodeplugSnapshot raw = driver.readCodeplug(this::log);
                 log("Декодирование...");
