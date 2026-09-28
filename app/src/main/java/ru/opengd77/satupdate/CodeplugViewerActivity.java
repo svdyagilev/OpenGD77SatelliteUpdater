@@ -130,7 +130,9 @@ public class CodeplugViewerActivity extends Activity {
                         + "\nContact: " + refContact(c.contactIndex)
                         + "\nRX Group: " + refRxGroup(c.rxGroupIndex);
             } else {
-                message += "Bandwidth: " + (c.wide25k ? "25 kHz" : "12.5 kHz")
+                message += "RX subtone: " + c.rxTone.displayText()
+                        + "\nTX subtone: " + c.txTone.displayText()
+                        + "\nBandwidth: " + (c.wide25k ? "25 kHz" : "12.5 kHz")
                         + "\nRX only: " + (c.rxOnly ? "да" : "нет");
             }
         } else if (obj instanceof CodeplugModel.Zone) {
