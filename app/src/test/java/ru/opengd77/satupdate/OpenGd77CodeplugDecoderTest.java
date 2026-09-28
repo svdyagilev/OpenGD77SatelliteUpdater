@@ -27,6 +27,8 @@ public class OpenGd77CodeplugDecoderTest {
         putBcd8Le(bank0, ch0 + 0x10, 14550000);
         putBcd8Le(bank0, ch0 + 0x14, 14550000);
         bank0[ch0 + 0x18] = 0;
+        bank0[ch0 + 0x19] = 8;      // MD-9600 25 W
+        bank0[ch0 + 0x26] = 0x40;   // NO_BEEP; Eco remains enabled
         bank0[ch0 + 0x33] = 0x02;
 
         byte[] banks = new byte[7 * 0x1c10];
@@ -55,7 +57,7 @@ public class OpenGd77CodeplugDecoderTest {
         contacts[0x17] = 0x02;
 
         byte[] rxGroups = new byte[0x1840];
-        rxGroups[0] = 2; // one contact encoded as count+1
+        rxGroups[0] = 2;
         int group = 0x80;
         putAscii(rxGroups, group, "TG LIST");
         ByteUtil.putU16le(rxGroups, group + 0x10, 1);
@@ -68,6 +70,10 @@ public class OpenGd77CodeplugDecoderTest {
         assertEquals(2, model.channels.size());
         assertEquals(1, model.channels.get(0).index);
         assertEquals(145500000L, model.channels.get(0).rxHz);
+        assertEquals(8, model.channels.get(0).powerSetting);
+        assertEquals("25 W", model.channels.get(0).powerText());
+        assertFalse(model.channels.get(0).beepEnabled);
+        assertTrue(model.channels.get(0).ecoEnabled);
         assertEquals(129, model.channels.get(1).index);
         assertTrue(model.channels.get(1).digital);
         assertEquals(3, model.channels.get(1).colorCode);
@@ -82,16 +88,16 @@ public class OpenGd77CodeplugDecoderTest {
         assertEquals(2, model.scanLists.get(0).channelIndices.size());
     }
 
-    @Test public void decodesRussianUtf8AndRealDmrId() {
+    @Test public void decodesRussianCp1251YaAndRealDmrId() {
         byte[] general = new byte[0x28];
-        putUtf8(general, 0, "RUS");
+        putCodeplug1251(general, 0, "RUS", 8);
         putBcd8Be(general, 8, 4010151);
 
         byte[] scans = new byte[0x1640];
         byte[] bank0 = new byte[0x1c10];
         bank0[0] = 0x01;
         int ch0 = 0x10;
-        putUtf8(bank0, ch0, "РЕПИТЕР");
+        putCodeplug1251(bank0, ch0, "Моя станция", 16);
         putBcd8Le(bank0, ch0 + 0x10, 43850000);
         putBcd8Le(bank0, ch0 + 0x14, 43090000);
 
@@ -100,11 +106,11 @@ public class OpenGd77CodeplugDecoderTest {
         byte[] zones = new byte[0xAC00];
         zones[0] = 0x01;
         int zone = 0x20;
-        putUtf8(zones, zone, "ГОРОД");
+        putCodeplug1251(zones, zone, "Моя зона", 16);
         ByteUtil.putU16le(zones, zone + 0x10, 1);
 
         byte[] contacts = new byte[0x6000];
-        putWin1251(contacts, 0, "ТЕСТ");
+        putCodeplug1251(contacts, 0, "МОЯ ГРУППА", 16);
         putBcd8Be(contacts, 0x10, 4010151);
 
         byte[] rxGroups = new byte[0x1840];
@@ -113,9 +119,26 @@ public class OpenGd77CodeplugDecoderTest {
                 general, scans, bank0, zones, banks, contacts, rxGroups));
 
         assertEquals(4010151, model.general.dmrId);
-        assertEquals("РЕПИТЕР", model.channels.get(0).name);
-        assertEquals("ГОРОД", model.zones.get(0).name);
-        assertEquals("ТЕСТ", model.contacts.get(0).name);
+        assertEquals("Моя станция", model.channels.get(0).name);
+        assertEquals("Моя зона", model.zones.get(0).name);
+        assertEquals("МОЯ ГРУППА", model.contacts.get(0).name);
+    }
+
+    @Test public void decodesNoEcoFlagIndependently() {
+        byte[] general = new byte[0x28];
+        byte[] scans = new byte[0x1640];
+        byte[] bank0 = new byte[0x1c10];
+        bank0[0] = 1;
+        int ch = 0x10;
+        putAscii(bank0, ch, "ECO TEST");
+        bank0[ch + 0x26] = 0x20; // NO_ECO only
+
+        CodeplugModel model = OpenGd77CodeplugDecoder.decode(new CodeplugSnapshot(
+                general, scans, bank0, new byte[0xAC00], new byte[7 * 0x1c10],
+                new byte[0x6000], new byte[0x1840]));
+
+        assertTrue(model.channels.get(0).beepEnabled);
+        assertFalse(model.channels.get(0).ecoEnabled);
     }
 
     private static void putAscii(byte[] b, int off, String s) {
@@ -123,14 +146,14 @@ public class OpenGd77CodeplugDecoderTest {
         System.arraycopy(x, 0, b, off, x.length);
     }
 
-    private static void putUtf8(byte[] b, int off, String s) {
-        byte[] x = s.getBytes(StandardCharsets.UTF_8);
-        System.arraycopy(x, 0, b, off, Math.min(x.length, 16));
-    }
-
-    private static void putWin1251(byte[] b, int off, String s) {
+    private static void putCodeplug1251(byte[] b, int off, String s, int maxLen) {
         byte[] x = s.getBytes(Charset.forName("windows-1251"));
-        System.arraycopy(x, 0, b, off, Math.min(x.length, 16));
+        int n = Math.min(x.length, maxLen);
+        for (int i = 0; i < n; i++) {
+            int v = x[i] & 0xff;
+            b[off + i] = (byte)(v == 0xff ? 0x7f : v);
+        }
+        for (int i = n; i < maxLen; i++) b[off + i] = (byte)0xff;
     }
 
     private static void putBcd8Le(byte[] b, int off, int value) {
