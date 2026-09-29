@@ -50,6 +50,11 @@ public class CodeplugViewerActivity extends Activity {
             if (activeCategory == 10) CodeplugEditDialogs.boot(this, model.boot, this::commitEdit);
             else CodeplugEditDialogs.general(this, model.general, this::commitEdit);
         });
+        findViewById(R.id.addRecordButton).setOnClickListener(v -> {
+            try { if (creationKind()!=null && CodeplugSession.project!=null)
+                CodeplugEditDialogs.create(this,CodeplugSession.project,creationKind(),this::commitEdit);
+            } catch(Exception e) { problem(e); }
+        });
         refreshSummary();
 
         String[] categories = {"Обзор", "Загрузочный экран", "DMR ID и позывной",
@@ -83,8 +88,26 @@ public class CodeplugViewerActivity extends Activity {
         visibleObjects.add(text);
     }
 
+    private CodeplugRecords.Kind creationKind() {
+        switch(activeCategory){
+            case 1:return CodeplugRecords.Kind.CHANNEL;
+            case 3:return CodeplugRecords.Kind.ZONE;
+            case 4:return CodeplugRecords.Kind.DMR;
+            case 8:return CodeplugRecords.Kind.DTMF;
+            default:return null;
+        }
+    }
+    private void refreshAddButton() {
+        android.widget.Button button=findViewById(R.id.addRecordButton);
+        CodeplugRecords.Kind kind=creationKind();
+        button.setVisibility(model!=null && kind!=null?View.VISIBLE:View.GONE);
+        if(kind!=null){
+            button.setText(kind==CodeplugRecords.Kind.CHANNEL?"Добавить канал":kind==CodeplugRecords.Kind.ZONE?"Добавить зону":kind==CodeplugRecords.Kind.DMR?"Добавить контакт DMR":"Добавить контакт DTMF");
+        }
+    }
     private void showCategory(int category) {
         activeCategory = category;
+        refreshAddButton();
         visibleObjects.clear();
         findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10) ? View.VISIBLE : View.GONE);
         if (model == null) return;
@@ -364,6 +387,7 @@ public class CodeplugViewerActivity extends Activity {
     private void refreshSummary() {
         model = CodeplugSession.current;
         boolean loaded = model != null && CodeplugSession.project != null;
+        refreshAddButton();
         listView.setVisibility(loaded ? View.VISIBLE : View.GONE);
         categorySpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
         findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10) ? View.VISIBLE : View.GONE);

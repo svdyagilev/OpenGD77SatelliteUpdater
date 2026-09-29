@@ -3,7 +3,7 @@ package ru.opengd77.satupdate;
 import java.io.IOException;
 import java.util.*;
 
-/** MD-9600 physical FLASH map. Only existing editor-supported records may change. */
+/** MD-9600 physical FLASH map. Existing field patches plus validated new record allocation. */
 final class CodeplugWritePlan {
     static final String[] NAMES={"DMR ID и позывной", "Каналы", "Контакты DMR", "Контакты DTMF", "Зоны", "Загрузочный экран", "Группы приёма", "APRS"};
     static final int[][] BLOCKS={{1},{6,9},{10},{5},{8},{7},{11},{3}};
@@ -16,6 +16,7 @@ final class CodeplugWritePlan {
     final SortedMap<Integer,Byte> changes=new TreeMap<>();
     final Set<Integer> blocks=new TreeSet<>();
     final int[] counts=new int[NAMES.length];
+    final Set<Integer> dependencies=new TreeSet<>();
 
     CodeplugWritePlan(CodeplugProject project,boolean[] selected) {
         if(project==null||project.identity==null||project.identity.radioType!=5)
@@ -50,6 +51,16 @@ final class CodeplugWritePlan {
             masks[3][o+61]=7; // preserve other flags, symbol, magic and reserved bytes
         }
         CodeplugModel working=project.model();
+        for(CodeplugRecords.Kind kind:CodeplugRecords.Kind.values())for(int id=1;id<=CodeplugRecords.limit(kind);id++){
+            boolean before=CodeplugRecords.occupied(project.original,kind,id),after=CodeplugRecords.occupied(project.working,kind,id);
+            if(before&&!after)throw new IllegalArgumentException("Удаление записей пока не поддерживается");
+            if(before||!after)continue;
+            CodeplugRecords.validateNew(project.working,working,kind,id);
+            int block=CodeplugRecords.block(kind,id),o=CodeplugRecords.offset(kind,id);
+            Arrays.fill(masks[block],o,o+CodeplugRecords.size(kind),(byte)255);
+            if(kind==CodeplugRecords.Kind.CHANNEL||kind==CodeplugRecords.Kind.ZONE)
+                masks[block][CodeplugRecords.marker(kind,id)]|=1<<((id-1)%8);
+        }
         for(CodeplugModel.RxGroup g:original.rxGroups){
             boolean found=false;for(CodeplugModel.RxGroup after:working.rxGroups)if(after.index==g.index)found=true;
             if(!found)throw new IllegalArgumentException("Удаление групп приёма пока не поддерживается");
@@ -82,6 +93,53 @@ final class CodeplugWritePlan {
                 if(selected[section]){changes.put(ADDRESS[block]+i,b[block][i]);blocks.add(block);}
             }
         }
+        validateDependencies(original);
+    }
+    private void validateDependencies(CodeplugModel original){
+        CodeplugSnapshot effective=CodeplugProject.copy(project.original);
+        byte[][] target=CodeplugProject.blocks(effective),source=CodeplugProject.blocks(project.working);
+        for(int b:blocks)System.arraycopy(source[b],0,target[b],0,source[b].length);
+        CodeplugModel after=OpenGd77CodeplugDecoder.decode(effective);
+        if(blocks.contains(6)||blocks.contains(9)){
+            dependencies.add(10);dependencies.add(11);dependencies.add(3);
+            for(CodeplugModel.Channel c:after.channels){
+                CodeplugModel.Channel old=null;for(CodeplugModel.Channel v:original.channels)if(v.index==c.index)old=v;
+                if(c.digital){
+                    if(c.contactIndex!=0&&(old==null||!old.digital||old.contactIndex!=c.contactIndex)&&!has(after.contacts,c.contactIndex))
+                        throw new IllegalArgumentException("Канал #"+c.index+": выберите также «Контакты DMR», содержащие новый контакт");
+                    if(c.rxGroupIndex!=0&&(old==null||!old.digital||old.rxGroupIndex!=c.rxGroupIndex)&&!has(after.rxGroups,c.rxGroupIndex))
+                        throw new IllegalArgumentException("Канал #"+c.index+": группа приёма отсутствует в выбранных данных");
+                }else if(c.aprsConfigIndex!=0&&(old==null||old.digital||old.aprsConfigIndex!=c.aprsConfigIndex)&&!has(after.aprsConfigs,c.aprsConfigIndex))
+                    throw new IllegalArgumentException("Канал #"+c.index+": настройка APRS отсутствует");
+            }
+        }
+        if(blocks.contains(8)){
+            dependencies.add(6);dependencies.add(9);
+            for(CodeplugModel.Zone z:after.zones){
+                CodeplugModel.Zone old=null;for(CodeplugModel.Zone v:original.zones)if(v.index==z.index)old=v;
+                if(old!=null&&old.channelIndices.equals(z.channelIndices))continue;
+                for(int id:z.channelIndices)if(!has(after.channels,id))
+                    throw new IllegalArgumentException("Зона #"+z.index+": выберите также «Каналы», содержащие канал #"+id);
+            }
+        }
+        if(blocks.contains(11)){
+            dependencies.add(10);
+            for(CodeplugModel.RxGroup g:after.rxGroups){
+                CodeplugModel.RxGroup old=null;for(CodeplugModel.RxGroup v:original.rxGroups)if(v.index==g.index)old=v;
+                if(old!=null&&old.contactIndices.equals(g.contactIndices))continue;
+                for(int id:g.contactIndices)if(!has(after.contacts,id))
+                    throw new IllegalArgumentException("Группа #"+g.index+": выберите также «Контакты DMR», содержащие новый контакт");
+            }
+        }
+    }
+    private static boolean has(List<?> records,int id){
+        for(Object o:records){
+            if(o instanceof CodeplugModel.Channel&&((CodeplugModel.Channel)o).index==id)return true;
+            if(o instanceof CodeplugModel.Contact&&((CodeplugModel.Contact)o).index==id)return true;
+            if(o instanceof CodeplugModel.RxGroup&&((CodeplugModel.RxGroup)o).index==id)return true;
+            if(o instanceof CodeplugModel.AprsConfig&&((CodeplugModel.AprsConfig)o).index==id)return true;
+        }
+        return false;
     }
     String summary(){StringBuilder s=new StringBuilder();for(int i=0;i<NAMES.length;i++)if(selected[i]&&counts[i]>0)s.append(NAMES[i]).append(": ").append(counts[i]).append(" байт\n");return s.toString();}
     CodeplugProject completedProject(){return project.acceptWritten(blocks);}
@@ -98,7 +156,7 @@ final class CodeplugWritePlan {
     void execute(Memory memory,Backup backup,RadioDriver.Progress progress)throws IOException {
         if(changes.isEmpty())throw new IOException("В выбранных разделах нет изменений");
         byte[][] source=CodeplugProject.blocks(project.original);
-        Set<Integer> checks=new TreeSet<>(blocks);checks.add(1);
+        Set<Integer> checks=new TreeSet<>(blocks);checks.addAll(dependencies);checks.add(1);
         if(blocks.contains(11))checks.add(10); // group references must match the radio contacts
          // identity anchor even for contact-only writes
         for(int b:checks){

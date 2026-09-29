@@ -88,3 +88,30 @@ Boot addresses independently match open-ham/OpenGD77
 11 additional tests cover wire values, slot boundaries, empty groups, validation
 atomicity, field preservation, no-op edits, project round-trip, write subset
 rebasing, live VFO preservation and stale contact dependencies.
+
+
+## 0.6.3 creation
+
+New DMR/DTMF contacts, channels and zones allocate the first physically free
+slot. Channel and zone allocation uses bitmap bits, not decoded list sizes.
+DMR/DTMF allocation uses the empty first name byte (0/0xFF). Existing indices,
+records and unused neighboring slots are preserved. Limits remain 1024/63/1024/250.
+
+New records are initialized deterministically (zero reserved fields; 0xFF text
+padding; no tones, narrow FM, global power/squelch, CC1/TS1, 12.5 kHz step).
+DTMF codes use the reference 0..15 lookup and 0xFF padding. New contacts default
+to no timeslot override. New zone tails contain zero channel references.
+Reference: qDMR OpenGD77BaseCodeplug ChannelElement, ContactElement,
+DTMFContactElement and ZoneElement encoding; RUS zone geometry stays unchanged.
+
+Creation whitelists only new record bytes and its exact activation bit after
+rebuilding/validating the record from supported values. Deletion remains blocked.
+Existing record masks remain unchanged. Selected-section validation uses the
+resulting radio image, so references to unselected new contacts/channels fail
+before any USB write. Zone writes preflight both channel banks; channel writes
+preflight contact, RX-group and APRS banks. RX groups also check selected contacts.
+All previous sector backup/read-back behavior remains in effect.
+
+Tests cover empty lists, deleted slots, capacity, channel bank/bitmap boundaries,
+last slots, atomic rejection, round-trip/undo, mode switches before first write,
+selected dependency ordering, stale dependencies and full memory preservation.

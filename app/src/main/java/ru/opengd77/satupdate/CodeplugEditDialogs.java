@@ -16,7 +16,7 @@ final class CodeplugEditDialogs {
     }
     private static final class Form {
         final Activity activity;final LinearLayout body;LinearLayout target;
-        final Map<String,Field> fields=new LinkedHashMap<>();String group="";Spinner mode;
+        final Map<String,Field> fields=new LinkedHashMap<>();String group="";Spinner mode;boolean creating;
         final String title; final Save save;
         Form(Activity a,String title,Save save){this.activity=a;this.title=title;this.save=save;
             body=new LinearLayout(a);body.setOrientation(LinearLayout.VERTICAL);int p=(int)(16*a.getResources().getDisplayMetrics().density);body.setPadding(p,p,p,p);target=body;
@@ -41,14 +41,14 @@ final class CodeplugEditDialogs {
         void show(){
             ScrollView scroll=new ScrollView(activity);scroll.addView(body);
             AlertDialog d=new AlertDialog.Builder(activity).setTitle(title).setView(scroll)
-                    .setNegativeButton("Отмена",null).setPositiveButton("Сохранить",null).create();
+                    .setNegativeButton("Отмена",null).setPositiveButton(creating?"Создать":"Сохранить",null).create();
             d.setOnShowListener(v->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w->{
                 try{
                     Map<String,String> values=new LinkedHashMap<>();
                     String active=mode==null?"":fields.get("mode").value.get();
                     for(Map.Entry<String,Field> entry:fields.entrySet()){
                         Field f=entry.getValue();if(!f.group.isEmpty()&&!f.group.equals(active))continue;
-                        String value=f.value.get();if(!value.equals(f.initial))values.put(entry.getKey(),value);
+                        String value=f.value.get();if(creating||!value.equals(f.initial))values.put(entry.getKey(),value);
                     }
                     save.apply(values);d.dismiss();
                 }catch(Exception e){new AlertDialog.Builder(activity).setTitle("Проверьте значения").setMessage(e.getMessage()).setPositiveButton("OK",null).show();}
@@ -69,20 +69,33 @@ final class CodeplugEditDialogs {
     static boolean supported(Object o){return o instanceof CodeplugModel.Channel&&((CodeplugModel.Channel)o).index>0
             ||o instanceof CodeplugModel.Zone||o instanceof CodeplugModel.Contact||o instanceof CodeplugModel.DtmfContact
             ||o instanceof CodeplugModel.RxGroup||o instanceof CodeplugModel.AprsConfig;}
-    static void edit(Activity a,Object o,CodeplugModel m,Commit commit){
-        if(o instanceof CodeplugModel.Channel){channel(a,(CodeplugModel.Channel)o,m,commit);return;}
-        if(o instanceof CodeplugModel.Zone){zone(a,(CodeplugModel.Zone)o,m,commit);return;}
+    static void create(Activity a,CodeplugProject project,CodeplugRecords.Kind kind,Commit commit){
+        int index=CodeplugRecords.next(project.working,kind);
+        CodeplugSnapshot preview=CodeplugProject.copy(project.working);
+        CodeplugRecords.seed(preview,kind,index);
+        CodeplugModel m=OpenGd77CodeplugDecoder.decode(preview);
+        edit(a,CodeplugRecords.record(m,kind,index),m,commit,kind);
+    }
+    static void edit(Activity a,Object o,CodeplugModel m,Commit commit){edit(a,o,m,commit,null);}
+    private static Form recordForm(Activity a,String title,Commit commit,CodeplugRecords.Kind creating,int index,Save edit){
+        Form f=new Form(a,creating==null?title:"Создать: "+title,
+            creating==null?edit:values->commit.apply(s->CodeplugRecords.create(s,creating,index,values)));
+        f.creating=creating!=null;return f;
+    }
+    private static void edit(Activity a,Object o,CodeplugModel m,Commit commit,CodeplugRecords.Kind creating){
+        if(o instanceof CodeplugModel.Channel){channel(a,(CodeplugModel.Channel)o,m,commit,creating);return;}
+        if(o instanceof CodeplugModel.Zone){zone(a,(CodeplugModel.Zone)o,m,commit,creating);return;}
         if(o instanceof CodeplugModel.RxGroup){rxGroup(a,(CodeplugModel.RxGroup)o,m,commit);return;}
         if(o instanceof CodeplugModel.AprsConfig){aprs(a,(CodeplugModel.AprsConfig)o,commit);return;}
         boolean dtmf=o instanceof CodeplugModel.DtmfContact;
         int index=dtmf?((CodeplugModel.DtmfContact)o).index:((CodeplugModel.Contact)o).index;
         String name=dtmf?((CodeplugModel.DtmfContact)o).name:((CodeplugModel.Contact)o).name;
-        Form f=new Form(a,(dtmf?"Контакт DTMF ":"Контакт DMR ")+index,
+        Form f=recordForm(a,(dtmf?"Контакт DTMF ":"Контакт DMR ")+index,commit,creating,index,
                 changes->commit.apply(s->CodeplugEditor.contact(s,index,dtmf,changes)));
-        f.text("name","Имя (до 16 символов)",name,false);
-        if(dtmf)f.text("code","Код DTMF",((CodeplugModel.DtmfContact)o).code,false);
+        f.text("name","Имя (до 16 символов)",creating==null?name:"",false);
+        if(dtmf)f.text("code","Код DTMF",creating==null?((CodeplugModel.DtmfContact)o).code:"",false);
         else{CodeplugModel.Contact c=(CodeplugModel.Contact)o;
-            f.text("number","ID / TG", ""+c.number,true);
+            f.text("number","ID / TG", creating==null?""+c.number:"",true);
             f.choice("type","Тип вызова",""+c.type,numbers(0,2),new String[]{"Групповой","Индивидуальный","Общий"});
             f.choice("ts","Переопределение таймслота",""+c.tsOverride,new String[]{"3","0","2"},new String[]{"Нет","TS1","TS2"});}
         f.show();
@@ -130,13 +143,13 @@ final class CodeplugEditDialogs {
         f.check("qsy","Передавать QSY",(ap.flags&4)!=0);
         f.show();
     }
-    private static void channel(Activity a,CodeplugModel.Channel c,CodeplugModel m,Commit commit){
-        Form f=new Form(a,"Канал "+c.index,changes->commit.apply(s->CodeplugEditor.channel(s,c.index,changes)));
+    private static void channel(Activity a,CodeplugModel.Channel c,CodeplugModel m,Commit commit,CodeplugRecords.Kind creating){
+        Form f=recordForm(a,"Канал "+c.index,commit,creating,c.index,changes->commit.apply(s->CodeplugEditor.channel(s,c.index,changes)));
         f.label("Общие настройки");
-        f.text("name","Имя (до 16 символов)",c.name,false);
+        f.text("name","Имя (до 16 символов)",creating==null?c.name:"",false);
         f.mode=f.choice("mode","Режим",c.digital?"1":"0",new String[]{"0","1"},new String[]{"Аналоговый (FM)","Цифровой (DMR)"});
-        f.text("rx","Приём, МГц",String.format(Locale.US,"%.6f",c.rxHz/1000000.0),false);
-        f.text("tx","Передача, МГц",String.format(Locale.US,"%.6f",c.txHz/1000000.0),false);
+        f.text("rx","Приём, МГц",creating!=null?"":String.format(Locale.US,"%.6f",c.rxHz/1000000.0),false);
+        f.text("tx","Передача, МГц",creating!=null?"":String.format(Locale.US,"%.6f",c.txHz/1000000.0),false);
         f.choice("power","Мощность",""+c.powerSetting,numbers(0,10),new String[]{"От общей настройки","100 мВт","250 мВт","500 мВт","750 мВт","1 Вт","5 Вт","10 Вт","25 Вт","40 Вт","+Вт−"});
         f.text("tot","Ограничение передачи, с (0 — выкл., шаг 15)",""+c.totSeconds,true);
         f.choice("step","Шаг частоты",""+c.stepIndex,numbers(0,7),new String[]{"2.5 кГц","5 кГц","6.25 кГц","10 кГц","12.5 кГц","25 кГц","30 кГц","50 кГц"});
@@ -166,9 +179,9 @@ final class CodeplugEditDialogs {
         fm.setVisibility(c.digital?View.GONE:View.VISIBLE);dmr.setVisibility(c.digital?View.VISIBLE:View.GONE);
         f.show();
     }
-    private static void zone(Activity a,CodeplugModel.Zone z,CodeplugModel m,Commit commit){
-        Form f=new Form(a,"Зона "+z.index,changes->commit.apply(s->CodeplugEditor.zone(s,z.index,changes)));
-        f.text("name","Имя (до 16 символов)",z.name,false);
+    private static void zone(Activity a,CodeplugModel.Zone z,CodeplugModel m,Commit commit,CodeplugRecords.Kind creating){
+        Form f=recordForm(a,"Зона "+z.index,commit,creating,z.index,changes->commit.apply(s->CodeplugEditor.zone(s,z.index,changes)));
+        f.text("name","Имя (до 16 символов)",creating==null?z.name:"",false);
         StringBuilder initial=new StringBuilder();for(int id:z.channelIndices){if(initial.length()>0)initial.append(", ");initial.append(id);}
         EditText members=f.text("members","Номера каналов в нужном порядке (до 80)",initial.toString(),false);
         Button select=new Button(a);select.setText("Выбрать каналы по имени");f.body.addView(select);
