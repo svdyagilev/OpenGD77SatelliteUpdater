@@ -87,13 +87,15 @@
             android:layout_height="wrap_content"
             android:paddingTop="6dp"
             android:paddingBottom="8dp"
-            android:text="Channels, Zones, DMR Contacts, RX Groups и Scan Lists. Полная запись codeplug отключена." />
+            android:text="Чтение радиостанции и редактирование локального проекта. Запись codeplug в рацию пока отключена." />
 
         <ru.opengd77.satupdate.CodeplugReadButton
             android:id="@+id/readCodeplugButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Прочитать и открыть codeplug" />
+        <Button android:id="@+id/editorProjectButton" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="Открыть редактор / проект" />
 
         <Button
             android:id="@+id/advancedToggleButton"

@@ -17,6 +17,9 @@ import java.util.Locale;
 
 public class CodeplugViewerActivity extends Activity {
     private CodeplugModel model;
+    private int activeCategory;
+    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602;
+    private byte[] pendingExport;
     private Spinner categorySpinner;
     private ListView listView;
     private TextView summaryText;
@@ -26,23 +29,22 @@ public class CodeplugViewerActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_codeplug_viewer);
 
+        if (CodeplugSession.project == null) {
+            try { CodeplugSession.install(CodeplugProjectStore.load(this)); }
+            catch (Exception e) { new AlertDialog.Builder(this).setTitle("Проект не открыт")
+                    .setMessage(e.getMessage()).setPositiveButton("OK", null).show(); }
+        }
         model = CodeplugSession.current;
         summaryText = findViewById(R.id.codeplugSummaryText);
         categorySpinner = findViewById(R.id.codeplugCategorySpinner);
         listView = findViewById(R.id.codeplugList);
         findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> returnToMain());
 
-        if (model == null) {
-            summaryText.setText("Codeplug не загружен. Вернитесь назад и выполните чтение радиостанции.");
-            listView.setVisibility(View.GONE);
-            categorySpinner.setVisibility(View.GONE);
-            return;
-        }
-
-        String name = model.general.radioName.isEmpty() ? "без имени" : model.general.radioName;
-        summaryText.setText(name + " • DMR ID " + model.general.dmrId + "\n"
-                + model.compactSummary() + "\n"
-                + "Прочитано: " + model.rawBytes + " байт • просмотр codeplug • только чтение");
+        findViewById(R.id.projectMenuButton).setOnClickListener(v -> projectMenu());
+        findViewById(R.id.editGeneralButton).setOnClickListener(v -> {
+            if (model != null) CodeplugEditDialogs.general(this, model.general, this::commitEdit);
+        });
+        refreshSummary();
 
         String[] categories = {"Обзор", "Загрузочный экран", "DMR ID и позывной",
                 "Ограничения частот", "Настройки DTMF", "Настройки APRS",
@@ -76,7 +78,10 @@ public class CodeplugViewerActivity extends Activity {
     }
 
     private void showCategory(int category) {
+        activeCategory = category;
         visibleObjects.clear();
+        findViewById(R.id.editGeneralButton).setVisibility(model != null && category == 13 ? View.VISIBLE : View.GONE);
+        if (model == null) return;
         List<String> rows = new ArrayList<>();
         switch (category) {
             case 0:
@@ -243,8 +248,13 @@ public class CodeplugViewerActivity extends Activity {
             return;
         }
 
-        new AlertDialog.Builder(this).setTitle(title).setMessage(message)
-                .setPositiveButton("OK", null).show();
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+                .setPositiveButton("Закрыть", null);
+        if (CodeplugSession.project != null && CodeplugEditDialogs.supported(obj)) {
+            dialog.setNeutralButton("Изменить", (d, w) ->
+                    CodeplugEditDialogs.edit(this, obj, model, this::commitEdit));
+        }
+        dialog.show();
     }
 
     private String channelDetails(CodeplugModel.Channel c) {
@@ -343,6 +353,114 @@ public class CodeplugViewerActivity extends Activity {
             if (a.index == index) return "#" + index + " " + a.name;
         }
         return "#" + index;
+    }
+
+    private void refreshSummary() {
+        model = CodeplugSession.current;
+        boolean loaded = model != null && CodeplugSession.project != null;
+        listView.setVisibility(loaded ? View.VISIBLE : View.GONE);
+        categorySpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(loaded && activeCategory == 13 ? View.VISIBLE : View.GONE);
+        if (!loaded) {
+            summaryText.setText("Откройте файл через «Проект» или прочитайте радиостанцию с главного экрана.");
+            return;
+        }
+        String name = model.general.radioName.isEmpty() ? "без имени" : model.general.radioName;
+        summaryText.setText(name + " • DMR ID " + model.general.dmrId + "\n" + model.compactSummary()
+                + "\nИзменено байтов: " + CodeplugSession.project.changedBytes()
+                + " • автосохранение на телефоне\nЗапись в радиостанцию отключена");
+    }
+
+    private void commitEdit(CodeplugProject.Change change) throws Exception {
+        installProject(CodeplugSession.project.edit(change));
+    }
+
+    private void installProject(CodeplugProject next) throws Exception {
+        CodeplugProjectStore.save(this, next);
+        CodeplugSession.install(next);
+        refreshSummary();
+        showCategory(activeCategory);
+    }
+
+    private void problem(Exception e) {
+        new AlertDialog.Builder(this).setTitle("Операция не выполнена").setMessage(e.getMessage())
+                .setPositiveButton("OK", null).show();
+    }
+
+    private void projectMenu() {
+        String[] items = {"Открыть файл проекта", "Сохранить копию проекта в файл",
+                "Отменить последнее изменение", "Вернуть исходное чтение", "Изменения по блокам"};
+        new AlertDialog.Builder(this).setTitle("Проект (.ogcproj)").setItems(items, (dialog, which) -> {
+            try {
+                if (which == 0) {
+                    if (CodeplugSession.project != null && CodeplugSession.project.changedBytes() > 0) {
+                        new AlertDialog.Builder(this).setTitle("Открыть другой проект?")
+                                .setMessage("Текущий рабочий проект будет заменён. Сохраните его копию в файл, если хотите к нему вернуться.")
+                                .setNegativeButton("Отмена", null).setPositiveButton("Открыть", (d, w) -> openProject()).show();
+                    } else openProject();
+                    return;
+                }
+                CodeplugProject project = CodeplugSession.project;
+                if (project == null) throw new IllegalArgumentException("Сначала откройте проект или прочитайте радиостанцию");
+                if (which == 1) {
+                    pendingExport = project.encode();
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("application/octet-stream");
+                    intent.putExtra(Intent.EXTRA_TITLE, "MD9600-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
+                            .format(new java.util.Date()) + ".ogcproj");
+                    startActivityForResult(intent, SAVE_PROJECT);
+                } else if (which == 2) {
+                    if (!project.canUndo()) throw new IllegalArgumentException("Нет шагов для отмены в этой сессии. Исходное чтение сохранено в проекте.");
+                    installProject(project.undo());
+                } else if (which == 3) {
+                    new AlertDialog.Builder(this).setTitle("Вернуть исходное чтение?")
+                            .setMessage("Правки в рабочей копии будут отменены. Радиостанция не изменяется.")
+                            .setNegativeButton("Отмена", null).setPositiveButton("Вернуть", (d,w) -> {
+                                try { installProject(project.reset()); } catch (Exception e) { problem(e); }
+                            }).show();
+                } else {
+                    String[] names = {"Сведения о станции", "Общие настройки", "DTMF", "APRS", "Сканирование",
+                            "Контакты DTMF", "Каналы 1–128", "Загрузочный экран / VFO", "Зоны", "Каналы 129–1024",
+                            "Контакты DMR", "Группы приёма", "Дополнительные настройки"};
+                    byte[][] before = CodeplugProject.blocks(project.original), after = CodeplugProject.blocks(project.working);
+                    StringBuilder text = new StringBuilder();
+                    for (int i=0; i<before.length; i++) {
+                        int count=0; for (int j=0; j<before[i].length; j++) if (before[i][j]!=after[i][j]) count++;
+                        if (count>0) text.append(names[i]).append(": ").append(count).append(" байт\n");
+                    }
+                    new AlertDialog.Builder(this).setTitle("Изменения проекта")
+                            .setMessage(text.length()==0 ? "Изменений нет" : text.toString()).setPositiveButton("OK", null).show();
+                }
+            } catch (Exception e) { problem(e); }
+        }).show();
+    }
+
+    private void openProject() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(intent, OPEN_PROJECT);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) { pendingExport=null; return; }
+        try {
+            if (requestCode == OPEN_PROJECT) {
+                try (java.io.InputStream in = getContentResolver().openInputStream(data.getData())) {
+                    installProject(CodeplugProject.read(in));
+                }
+            } else if (requestCode == SAVE_PROJECT) {
+                byte[] bytes = pendingExport != null ? pendingExport : CodeplugSession.project.encode();
+                try (java.io.OutputStream out = getContentResolver().openOutputStream(data.getData(), "wt")) {
+                    if (out == null) throw new java.io.IOException("Не удалось открыть файл для записи");
+                    out.write(bytes); out.flush();
+                }
+                android.widget.Toast.makeText(this, "Копия проекта сохранена", android.widget.Toast.LENGTH_LONG).show();
+            }
+        } catch (Exception e) { problem(e); }
+        finally { pendingExport=null; }
     }
 
     private static String available(String s) {

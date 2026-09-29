@@ -154,6 +154,8 @@ public class MainActivity extends Activity {
             log("Ошибка Satellites.txt: " + e.getMessage());
         }
 
+        findViewById(R.id.editorProjectButton).setOnClickListener(v -> startActivity(new Intent(this, CodeplugViewerActivity.class)));
+
         autoUpdateButton.setOnClickListener(v -> startAutomaticUpdate());
         downloadButton.setOnClickListener(v -> downloadTle());
         openFileButton.setOnClickListener(v -> openLocalTle());

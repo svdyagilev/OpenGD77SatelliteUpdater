@@ -68,9 +68,9 @@ public class CodeplugReadActivity extends Activity {
         else registerReceiver(usbReceiver, f);
 
         log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
-        log("Просмотр codeplug • только чтение");
+        log("Чтение codeplug для редактора");
         log("Читаются известные EEPROM/FLASH блоки, Сведения о станции, VFO, APRS, DTMF и Спутники.");
-        log("Полная запись codeplug в этой версии отключена.");
+        log("Правки выполняются в локальном проекте; запись codeplug в рацию отключена.");
 
         getWindow().getDecorView().post(this::beginRead);
     }
@@ -101,7 +101,6 @@ public class CodeplugReadActivity extends Activity {
         if (busy) return;
         busy = true;
         retryButton.setEnabled(false);
-        CodeplugSession.current = null;
         log("\nПоиск OpenGD77 USB 1FC9:0094...");
 
         UsbDevice d = transport.findDevice();
@@ -145,7 +144,9 @@ public class CodeplugReadActivity extends Activity {
                 CodeplugSnapshot raw = driver.readCodeplug(this::log);
                 log("Декодирование...");
                 CodeplugModel model = OpenGd77CodeplugDecoder.decode(raw, identity);
-                CodeplugSession.current = model;
+                CodeplugProject project = new CodeplugProject(raw, identity);
+                CodeplugProjectStore.save(this, project);
+                CodeplugSession.install(project);
                 log("OK: " + model.compactSummary());
                 log("Имя станции: " + model.general.radioName + " • DMR ID " + model.general.dmrId);
                 log("Запись во FLASH/EEPROM не выполнялась.");
