@@ -42,11 +42,11 @@ public class CodeplugViewerActivity extends Activity {
         String name = model.general.radioName.isEmpty() ? "без имени" : model.general.radioName;
         summaryText.setText(name + " • DMR ID " + model.general.dmrId + "\n"
                 + model.compactSummary() + "\n"
-                + "Прочитано raw: " + model.rawBytes + " bytes • v0.5 deep audit • только чтение");
+                + "Прочитано: " + model.rawBytes + " байт • просмотр codeplug • только чтение");
 
         String[] categories = {"Обзор", "Каналы", "VFO A/B", "Зоны", "DMR контакты",
-                "RX Groups", "Scan Lists", "APRS", "DTMF контакты", "DTMF настройки",
-                "Boot / Quick Keys", "Device Info", "Satellites"};
+                "Группы приёма", "Списки сканирования", "APRS", "DTMF контакты", "DTMF настройки",
+                "Заставка / Быстрые клавиши", "Сведения о станции", "Спутники"};
         categorySpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item, categories));
         categorySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -77,20 +77,20 @@ public class CodeplugViewerActivity extends Activity {
         List<String> rows = new ArrayList<>();
         switch (category) {
             case 0:
-                addText(rows, "Radio name: " + emptyDash(model.general.radioName));
+                addText(rows, "Имя станции: " + emptyDash(model.general.radioName));
                 addText(rows, "DMR ID: " + model.general.dmrId);
-                addText(rows, "Codeplug version: " + model.general.codeplugVersion);
-                addText(rows, "VOX sense: " + model.general.voxSense);
-                addText(rows, String.format(Locale.US, "General flags: %02X %02X %02X %02X",
+                addText(rows, "Версия codeplug: " + model.general.codeplugVersion);
+                addText(rows, "Чувствительность VOX: " + model.general.voxSense);
+                addText(rows, String.format(Locale.US, "Общие флаги: %02X %02X %02X %02X",
                         model.general.flag1, model.general.flag2, model.general.flag3, model.general.flag4));
-                addText(rows, "Channels: " + model.channels.size() + " / 1024");
-                addText(rows, "Zones: " + model.zones.size() + " / 250");
-                addText(rows, "DMR Contacts: " + model.contacts.size() + " / 1024");
-                addText(rows, "RX Groups: " + model.rxGroups.size() + " / 76");
-                addText(rows, "Scan Lists: " + model.scanLists.size() + " / 64");
-                addText(rows, "APRS configs: " + model.aprsConfigs.size() + " / 8");
-                addText(rows, "DTMF Contacts: " + model.dtmfContacts.size() + " / 63");
-                addText(rows, "Satellites: " + model.satellites.size() + " / 25");
+                addText(rows, "Каналы: " + model.channels.size() + " / 1024");
+                addText(rows, "Зоны: " + model.zones.size() + " / 250");
+                addText(rows, "DMR контакты: " + model.contacts.size() + " / 1024");
+                addText(rows, "Группы приёма: " + model.rxGroups.size() + " / 76");
+                addText(rows, "Списки сканирования: " + model.scanLists.size() + " / 64");
+                addText(rows, "Настройки APRS: " + model.aprsConfigs.size() + " / 8");
+                addText(rows, "DTMF контакты: " + model.dtmfContacts.size() + " / 63");
+                addText(rows, "Спутники: " + model.satellites.size() + " / 25");
                 break;
             case 1:
                 for (CodeplugModel.Channel c : model.channels) {
@@ -145,7 +145,7 @@ public class CodeplugViewerActivity extends Activity {
                 for (CodeplugModel.Satellite s : model.satellites) {
                     visibleObjects.add(s); rows.add(s.oneLine());
                 }
-                if (rows.isEmpty()) addText(rows, "Satellite TLV не найден или пуст");
+                if (rows.isEmpty()) addText(rows, "Данные спутников (TLV) не найдены или пусты");
                 break;
         }
         listView.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, rows));
@@ -153,42 +153,47 @@ public class CodeplugViewerActivity extends Activity {
 
     private void showDtmfSettings(List<String> rows) {
         CodeplugModel.DtmfSettings d = model.dtmfSettings;
-        addText(rows, "Self ID: " + emptyDash(d.selfId));
-        addText(rows, "Kill code: " + emptyDash(d.killCode));
-        addText(rows, "Wake code: " + emptyDash(d.wakeCode));
-        addText(rows, "Delimiter raw: " + d.delimiter + " • Group raw: " + d.groupCode);
-        addText(rows, "Decode response: " + d.decodeResponse + " • Auto reset: " + d.autoResetSeconds + " s");
-        addText(rows, "Kill/Wake decode: " + yesNo(d.killWakeDecode) + " • Kill type: " + d.killType);
-        addText(rows, "PTT ID up: " + emptyDash(d.pttUp));
-        addText(rows, "PTT ID down: " + emptyDash(d.pttDown));
-        addText(rows, String.format(Locale.US, "Response hold: %.1f s • Decode: %.1f s",
+        addText(rows, "Собственный ID: " + emptyDash(d.selfId));
+        addText(rows, "Код блокировки: " + emptyDash(d.killCode));
+        addText(rows, "Код разблокировки: " + emptyDash(d.wakeCode));
+        addText(rows, "Разделитель (код): " + d.delimiter + " • Групповой символ (код): " + d.groupCode);
+        addText(rows, "Ответ декодера (код): " + d.decodeResponse + " • Автосброс: " + d.autoResetSeconds + " с");
+        addText(rows, "Декодирование блокировки/разблокировки: " + yesNo(d.killWakeDecode) + " • Тип блокировки (код): " + d.killType);
+        addText(rows, "Код при нажатии PTT: " + emptyDash(d.pttUp));
+        addText(rows, "Код при отпускании PTT: " + emptyDash(d.pttDown));
+        addText(rows, String.format(Locale.US, "Удержание ответа: %.1f с • Декодирование: %.1f с",
                 d.responseHoldSeconds, d.decodeTimeSeconds));
-        addText(rows, "First digit delay: " + d.firstDigitDelayMs + " ms");
-        addText(rows, "First/other duration: " + d.firstDigitDurationMs + " / " + d.otherDurationMs + " ms");
-        addText(rows, "Rate raw: " + d.rate + " • Tail: " + d.tailMs + " ms");
+        addText(rows, "Задержка первого символа: " + d.firstDigitDelayMs + " мс");
+        addText(rows, "Длительность первого/остальных символов: " + d.firstDigitDurationMs + " / " + d.otherDurationMs + " мс");
+        addText(rows, "Скорость (код): " + d.rate + " • Завершающая задержка: " + d.tailMs + " мс");
     }
 
     private void showBoot(List<String> rows) {
         CodeplugModel.BootInfo b = model.boot;
-        addText(rows, "Intro mode: " + (b.introMode == 1 ? "Text" : b.introMode == 0 ? "Picture" : "RAW " + b.introMode));
-        addText(rows, "Boot password: " + (b.passwordEnabled ? "enabled" : "disabled") + " (PIN не показывается)");
-        addText(rows, "Line 1: " + emptyDash(b.line1));
-        addText(rows, "Line 2: " + emptyDash(b.line2));
+        addText(rows, "Заставка: " + (b.introMode == 1 ? "Текст" : b.introMode == 0 ? "Изображение" : "Код " + b.introMode));
+        addText(rows, "Пароль при включении: " + (b.passwordEnabled ? "включён" : "выключен") + " (PIN не показывается)");
+        addText(rows, "Строка 1: " + emptyDash(b.line1));
+        addText(rows, "Строка 2: " + emptyDash(b.line2));
         for (int i = 0; i < b.quickKeys.size(); i++) {
-            addText(rows, String.format(Locale.US, "Quick key %d: 0x%04X", i, b.quickKeys.get(i)));
+            addText(rows, String.format(Locale.US, "Быстрая клавиша %d: 0x%04X", i, b.quickKeys.get(i)));
         }
     }
 
     private void showDeviceInfo(List<String> rows) {
         CodeplugModel.DeviceInfo d = model.deviceInfo;
-        addText(rows, "Model: " + emptyDash(d.model));
-        addText(rows, "Serial: " + emptyDash(d.serial));
-        addText(rows, "CPS version: " + emptyDash(d.cpsVersion));
-        addText(rows, "Hardware: " + emptyDash(d.hardwareVersion));
-        addText(rows, "Firmware field: " + emptyDash(d.firmwareVersion));
-        addText(rows, "DSP: " + emptyDash(d.dspVersion));
-        addText(rows, "Band limits raw UHF: " + d.minUhf + " .. " + d.maxUhf);
-        addText(rows, "Band limits raw VHF: " + d.minVhf + " .. " + d.maxVhf);
+        addText(rows, "Модель (USB): " + available(d.liveModel));
+        addText(rows, "Прошивка (FW, USB): " + available(d.liveFirmware));
+        addText(rows, "Модель из codeplug: " + stored(d.model));
+        addText(rows, "Серийный номер: " + stored(d.serial));
+        addText(rows, "Версия CPS из codeplug: " + stored(d.cpsVersion));
+        addText(rows, "Аппаратная версия (HW): " + stored(d.hardwareVersion));
+        addText(rows, "Поле FW из codeplug: " + stored(d.firmwareVersion));
+        addText(rows, "Версия DSP из codeplug: " + stored(d.dspVersion));
+        addText(rows, "Границы UHF: " + d.uhfRangeText());
+        addText(rows, "Границы VHF: " + d.vhfRangeText());
+        addText(rows, "Модель и текущая прошивка получены по USB. Остальные поля — из codeplug; "
+                + "они могут быть пустыми или относиться к прежней прошивке. "
+                + "Границы из codeplug не обозначают текущие ограничения передачи.");
     }
 
     private void showDetails(Object obj) {
@@ -197,30 +202,30 @@ public class CodeplugViewerActivity extends Activity {
         String message;
         if (obj instanceof CodeplugModel.Channel) {
             CodeplugModel.Channel c = (CodeplugModel.Channel)obj;
-            title = (c.index > 0 ? "Channel " + c.index : "VFO") + " • " + c.name;
+            title = (c.index > 0 ? "Канал " + c.index : "VFO") + " • " + c.name;
             message = channelDetails(c);
         } else if (obj instanceof CodeplugModel.Zone) {
             CodeplugModel.Zone z = (CodeplugModel.Zone)obj;
-            title = "Zone " + z.index + " • " + z.name;
+            title = "Зона " + z.index + " • " + z.name;
             message = memberChannels(z.channelIndices);
         } else if (obj instanceof CodeplugModel.Contact) {
             CodeplugModel.Contact c = (CodeplugModel.Contact)obj;
-            title = "Contact " + c.index + " • " + c.name;
-            message = "Type: " + c.typeText() + "\nID/TG: " + c.number
-                    + "\nTS override: " + (c.tsOverride == 0x00 ? "TS1" : c.tsOverride == 0x02 ? "TS2" : "нет");
+            title = "Контакт " + c.index + " • " + c.name;
+            message = "Тип: " + c.typeText() + "\nID/TG: " + c.number
+                    + "\nПереопределение таймслота: " + (c.tsOverride == 0x00 ? "TS1" : c.tsOverride == 0x02 ? "TS2" : "нет");
         } else if (obj instanceof CodeplugModel.RxGroup) {
             CodeplugModel.RxGroup g = (CodeplugModel.RxGroup)obj;
-            title = "RX Group " + g.index + " • " + g.name;
+            title = "Группа приёма " + g.index + " • " + g.name;
             StringBuilder b = new StringBuilder();
             for (int idx : g.contactIndices) b.append(refContact(idx)).append('\n');
             message = b.length() == 0 ? "Контактов нет" : b.toString().trim();
         } else if (obj instanceof CodeplugModel.ScanList) {
             CodeplugModel.ScanList s = (CodeplugModel.ScanList)obj;
-            title = "Scan List " + s.index + " • " + s.name;
+            title = "Список сканирования " + s.index + " • " + s.name;
             message = memberChannels(s.channelIndices)
-                    + "\n\nPriority 1: " + refChannel(s.primary)
-                    + "\nPriority 2: " + refChannel(s.secondary)
-                    + "\nRevert: " + refChannel(s.revert);
+                    + "\n\nПриоритет 1: " + refChannel(s.primary)
+                    + "\nПриоритет 2: " + refChannel(s.secondary)
+                    + "\nКанал ответа: " + refChannel(s.revert);
         } else if (obj instanceof CodeplugModel.AprsConfig) {
             CodeplugModel.AprsConfig a = (CodeplugModel.AprsConfig)obj;
             title = "APRS " + a.index + " • " + a.name;
@@ -228,12 +233,12 @@ public class CodeplugViewerActivity extends Activity {
         } else if (obj instanceof CodeplugModel.DtmfContact) {
             CodeplugModel.DtmfContact d = (CodeplugModel.DtmfContact)obj;
             title = "DTMF " + d.index + " • " + d.name;
-            message = "Code: " + emptyDash(d.code);
+            message = "Код: " + emptyDash(d.code);
         } else if (obj instanceof CodeplugModel.Satellite) {
             CodeplugModel.Satellite s = (CodeplugModel.Satellite)obj;
-            title = "Satellite • " + s.name;
-            message = Double.isNaN(s.ageDays) ? "Epoch: неизвестен"
-                    : String.format(Locale.US, "Возраст Keps: %.2f days", s.ageDays);
+            title = "Спутник • " + s.name;
+            message = Double.isNaN(s.ageDays) ? "Эпоха: неизвестен"
+                    : String.format(Locale.US, "Возраст Keps: %.2f дн.", s.ageDays);
         } else {
             return;
         }
@@ -244,57 +249,57 @@ public class CodeplugViewerActivity extends Activity {
 
     private String channelDetails(CodeplugModel.Channel c) {
         StringBuilder b = new StringBuilder();
-        b.append(String.format(Locale.US, "RX: %.6f MHz\nTX: %.6f MHz\nMode: %s\n",
+        b.append(String.format(Locale.US, "RX: %.6f МГц\nTX: %.6f МГц\nРежим: %s\n",
                 c.rxHz / 1_000_000.0, c.txHz / 1_000_000.0, c.digital ? "DMR" : "FM"));
         b.append("Мощность: ").append(c.powerText()).append('\n');
-        b.append("TOT: ").append(c.totSeconds == 0 ? "∞ / off" : c.totSeconds + " s").append('\n');
-        b.append("Step: ").append(c.stepText()).append('\n');
-        b.append("RX only: ").append(yesNo(c.rxOnly)).append('\n');
+        b.append("TOT: ").append(c.totSeconds == 0 ? "выключен" : c.totSeconds + " с").append('\n');
+        b.append("Шаг частоты: ").append(c.stepText()).append('\n');
+        b.append("Только приём: ").append(yesNo(c.rxOnly)).append('\n');
         b.append("VOX: ").append(yesNo(c.vox)).append('\n');
         b.append("Бипер: ").append(c.beepEnabled ? "включён" : "выключен").append('\n');
         b.append("Экономайзер: ").append(c.ecoEnabled ? "включён" : "выключен").append('\n');
-        b.append("Zone skip: ").append(yesNo(c.zoneSkip)).append('\n');
-        b.append("All skip: ").append(yesNo(c.allSkip)).append('\n');
-        b.append("Fastcall (RUS): ").append(yesNo(c.fastCall)).append('\n');
-        b.append("Priority (RUS): ").append(yesNo(c.priority)).append('\n');
+        b.append("Пропуск при сканировании зоны: ").append(yesNo(c.zoneSkip)).append('\n');
+        b.append("Пропуск при сканировании всех каналов: ").append(yesNo(c.allSkip)).append('\n');
+        b.append("Быстрый вызов (RUS): ").append(yesNo(c.fastCall)).append('\n');
+        b.append("Приоритет (RUS): ").append(yesNo(c.priority)).append('\n');
 
         if (c.useLocation) {
-            b.append(String.format(Locale.US, "Use location: да\nLat/Lon: %.4f / %.4f\n", c.latitude, c.longitude));
+            b.append(String.format(Locale.US, "Использовать координаты: да\nШирота/долгота: %.4f / %.4f\n", c.latitude, c.longitude));
         } else {
-            b.append("Use location: нет\n");
+            b.append("Использовать координаты: нет\n");
         }
 
         if (c.digital) {
-            b.append("\n[DMR]\nColor Code: ").append(c.colorCode)
-                    .append("\nTime Slot: ").append(c.timeSlot)
-                    .append("\nContact: ").append(refContact(c.contactIndex))
-                    .append("\nRX Group: ").append(refRxGroup(c.rxGroupIndex))
-                    .append("\nOptional DMR ID: ").append(c.optionalDmrId == 0 ? "—" : c.optionalDmrId)
-                    .append("\nForce DMO: ").append(yesNo(c.forceDmo))
-                    .append("\nRoaming: ").append(yesNo(c.roaming))
-                    .append("\nTA TX TS1: ").append(c.taText(c.taTxTs1))
-                    .append("\nTA TX TS2: ").append(c.taText(c.taTxTs2));
+            b.append("\n[DMR]\nЦветовой код: ").append(c.colorCode)
+                    .append("\nТаймслот: ").append(c.timeSlot)
+                    .append("\nКонтакт: ").append(refContact(c.contactIndex))
+                    .append("\nГруппа приёма: ").append(refRxGroup(c.rxGroupIndex))
+                    .append("\nDMR ID канала: ").append(c.optionalDmrId == 0 ? "—" : c.optionalDmrId)
+                    .append("\nПринудительный DMO: ").append(yesNo(c.forceDmo))
+                    .append("\nРоуминг: ").append(yesNo(c.roaming))
+                    .append("\nПередача псевдонима (TA), TS1: ").append(c.taText(c.taTxTs1))
+                    .append("\nПередача псевдонима (TA), TS2: ").append(c.taText(c.taTxTs2));
         } else {
-            b.append("\n[FM]\nRX subtone: ").append(c.rxTone.displayText())
-                    .append("\nTX subtone: ").append(c.txTone.displayText())
-                    .append("\nBandwidth: ").append(c.wide25k ? "25 kHz" : "12.5 kHz")
-                    .append("\nSquelch: ").append(c.squelchText())
-                    .append("\nAPRS config: ").append(refAprs(c.aprsConfigIndex));
+            b.append("\n[FM]\nСубтон приёма: ").append(c.rxTone.displayText())
+                    .append("\nСубтон передачи: ").append(c.txTone.displayText())
+                    .append("\nПолоса: ").append(c.wide25k ? "25 кГц" : "12.5 кГц")
+                    .append("\nШумоподавитель: ").append(c.squelchText())
+                    .append("\nНастройка APRS: ").append(refAprs(c.aprsConfigIndex));
         }
 
-        b.append("\n\n[Legacy / RAW]\nAllow Talkaround: ").append(yesNo(c.allowTalkaround))
+        b.append("\n\n[Служебные поля / исходные значения]\nРазрешён прямой канал (Talkaround): ").append(yesNo(c.allowTalkaround))
                 .append("\nSTE: ").append(c.ste)
                 .append(" • NonSTE: ").append(c.nonSte)
                 .append(" • DataPL: ").append(yesNo(c.dataPl))
-                .append("\nPTT ID type: ").append(c.pttidType)
-                .append(" • Dual capacity: ").append(yesNo(c.dualCapacity))
-                .append("\nTiming pref: ").append(c.timingPreference)
+                .append("\nТип PTT ID: ").append(c.pttidType)
+                .append(" • Двойная ёмкость: ").append(yesNo(c.dualCapacity))
+                .append("\nПредпочтение синхронизации: ").append(c.timingPreference)
                 .append(" • ARS: ").append(c.ars)
-                .append(" • KeySwitch: ").append(c.keySwitch)
-                .append("\nUDP data head: ").append(yesNo(c.udpDataHead))
-                .append(" • Allow TX interrupt: ").append(yesNo(c.allowTxInterrupt))
-                .append("\nTX interrupt freq: ").append(yesNo(c.txInterruptFreq))
-                .append(" • Private call: ").append(yesNo(c.privateCall))
+                .append(" • Переключатель ключа: ").append(c.keySwitch)
+                .append("\nЗаголовок данных UDP: ").append(yesNo(c.udpDataHead))
+                .append(" • Разрешено прерывание передачи: ").append(yesNo(c.allowTxInterrupt))
+                .append("\nЧастота прерывания передачи: ").append(yesNo(c.txInterruptFreq))
+                .append(" • Индивидуальный вызов: ").append(yesNo(c.privateCall))
                 .append(String.format(Locale.US,
                         "\nRUS=%02X Libre=%02X flag1=%02X flag2=%02X flag3=%02X flag4=%02X",
                         c.rawOpenGd77Rus, c.rawLibreFlags, c.rawFlag1, c.rawFlag2,
@@ -304,16 +309,16 @@ public class CodeplugViewerActivity extends Activity {
 
     private String aprsDetails(CodeplugModel.AprsConfig a) {
         return "SSID: " + a.senderSsid
-                + String.format(Locale.US, "\nLat/Lon: %.4f / %.4f", a.latitude, a.longitude)
-                + "\nVia 1: " + emptyDash(a.via1) + "-" + a.via1Ssid
-                + "\nVia 2: " + emptyDash(a.via2) + "-" + a.via2Ssid
-                + "\nIcon table/index: " + a.iconTable + "/" + a.iconIndex
-                + "\nComment: " + emptyDash(a.comment)
-                + String.format(Locale.US, "\nTX: %.6f MHz", a.txHz / 1_000_000.0)
-                + "\n300 baud flag: " + yesNo((a.flags & 0x01) != 0)
-                + "\nUse position: " + yesNo((a.flags & 0x02) != 0)
-                + "\nTransmit QSY: " + yesNo((a.flags & 0x04) != 0)
-                + "\nSilent beacon: " + yesNo((a.flags & 0x08) != 0)
+                + String.format(Locale.US, "\nШирота/долгота: %.4f / %.4f", a.latitude, a.longitude)
+                + "\nМаршрут 1: " + emptyDash(a.via1) + "-" + a.via1Ssid
+                + "\nМаршрут 2: " + emptyDash(a.via2) + "-" + a.via2Ssid
+                + "\nТаблица/номер значка: " + a.iconTable + "/" + a.iconIndex
+                + "\nКомментарий: " + emptyDash(a.comment)
+                + String.format(Locale.US, "\nTX: %.6f МГц", a.txHz / 1_000_000.0)
+                + "\nСкорость 300 бод: " + yesNo((a.flags & 0x01) != 0)
+                + "\nИспользовать координаты: " + yesNo((a.flags & 0x02) != 0)
+                + "\nПередавать QSY: " + yesNo((a.flags & 0x04) != 0)
+                + "\nБеззвучный маяк: " + yesNo((a.flags & 0x08) != 0)
                 + String.format(Locale.US, "\nflags=0x%02X magic=0x%04X", a.flags, a.magic);
     }
 
@@ -354,6 +359,13 @@ public class CodeplugViewerActivity extends Activity {
             if (a.index == index) return "#" + index + " " + a.name;
         }
         return "#" + index;
+    }
+
+    private static String available(String s) {
+        return s == null || s.trim().isEmpty() ? "не получено по USB" : s;
+    }
+    private static String stored(String s) {
+        return s == null || s.trim().isEmpty() ? "не заполнено в codeplug" : s;
     }
 
     private static String yesNo(boolean v) { return v ? "да" : "нет"; }

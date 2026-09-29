@@ -27,7 +27,7 @@ public class OpenGd77CodeplugDecoderTest {
         putBcd8Le(bank0, ch0 + 0x10, 14550000);
         putBcd8Le(bank0, ch0 + 0x14, 14550000);
         bank0[ch0 + 0x18] = 0;
-        bank0[ch0 + 0x19] = 8;      // MD-9600 25 W
+        bank0[ch0 + 0x19] = 8;      // MD-9600 25 Вт
         bank0[ch0 + 0x26] = 0x40;   // NO_BEEP; Eco remains enabled
         bank0[ch0 + 0x33] = 0x02;
 
@@ -71,7 +71,7 @@ public class OpenGd77CodeplugDecoderTest {
         assertEquals(1, model.channels.get(0).index);
         assertEquals(145500000L, model.channels.get(0).rxHz);
         assertEquals(8, model.channels.get(0).powerSetting);
-        assertEquals("25 W", model.channels.get(0).powerText());
+        assertEquals("25 Вт", model.channels.get(0).powerText());
         assertFalse(model.channels.get(0).beepEnabled);
         assertTrue(model.channels.get(0).ecoEnabled);
         assertEquals(129, model.channels.get(1).index);

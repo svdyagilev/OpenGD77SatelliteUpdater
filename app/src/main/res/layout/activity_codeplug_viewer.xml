@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Codeplug Viewer"
+        android:text="Просмотр codeplug"
         android:textSize="22sp"
         android:textStyle="bold" />
 

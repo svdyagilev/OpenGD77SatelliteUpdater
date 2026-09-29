@@ -17,10 +17,13 @@ final class CodeplugModel {
         final String hardwareVersion;
         final String firmwareVersion;
         final String dspVersion;
+        final String liveModel;
+        final String liveFirmware;
 
         DeviceInfo(int minUhf, int maxUhf, int minVhf, int maxVhf,
                    String model, String serial, String cpsVersion,
-                   String hardwareVersion, String firmwareVersion, String dspVersion) {
+                   String hardwareVersion, String firmwareVersion, String dspVersion,
+                   RadioDriver.Identity identity) {
             this.minUhf = minUhf;
             this.maxUhf = maxUhf;
             this.minVhf = minVhf;
@@ -31,6 +34,16 @@ final class CodeplugModel {
             this.hardwareVersion = hardwareVersion;
             this.firmwareVersion = firmwareVersion;
             this.dspVersion = dspVersion;
+            this.liveModel = identity == null ? "" : identity.model;
+            this.liveFirmware = identity == null ? "" : identity.firmware;
+        }
+
+        String uhfRangeText() { return rangeText(minUhf, maxUhf); }
+        String vhfRangeText() { return rangeText(minVhf, maxVhf); }
+
+        private static String rangeText(int min, int max) {
+            if (min <= 0 || max <= 0 || min > max) return "нет корректных данных в codeplug";
+            return min + "–" + max + " МГц";
         }
     }
 
@@ -92,27 +105,27 @@ final class CodeplugModel {
                 case NONE:
                     return "нет";
                 case CTCSS:
-                    return String.format(Locale.US, "CTCSS %.1f Hz", value / 10.0);
+                    return String.format(Locale.US, "CTCSS %.1f Гц", value / 10.0);
                 case DCS_NORMAL:
                     return String.format(Locale.US, "DCS %03X N", value);
                 case DCS_INVERTED:
                     return String.format(Locale.US, "DCS %03X I", value);
                 default:
-                    return String.format(Locale.US, "RAW 0x%04X", raw & 0xffff);
+                    return String.format(Locale.US, "Код 0x%04X", raw & 0xffff);
             }
         }
     }
 
     static final class Channel {
         private static final String[] MD9600_POWER_LEVELS = {
-                "от Master", "100 mW", "250 mW", "500 mW", "750 mW",
-                "1 W", "5 W", "10 W", "25 W", "40 W", "+W-"
+                "от общей настройки", "100 мВт", "250 мВт", "500 мВт", "750 мВт",
+                "1 Вт", "5 Вт", "10 Вт", "25 Вт", "40 Вт", "+Вт−"
         };
         private static final String[] STEP_TEXT = {
-                "2.5 kHz", "5 kHz", "6.25 kHz", "10 kHz",
-                "12.5 kHz", "25 kHz", "30 kHz", "50 kHz"
+                "2.5 кГц", "5 кГц", "6.25 кГц", "10 кГц",
+                "12.5 кГц", "25 кГц", "30 кГц", "50 кГц"
         };
-        private static final String[] TA_TEXT = {"Off", "APRS", "Text", "APRS+Text"};
+        private static final String[] TA_TEXT = {"Выкл.", "APRS", "Текст", "APRS+Текст"};
 
         final int index;
         final String name;
@@ -242,29 +255,29 @@ final class CodeplugModel {
             if (powerSetting >= 0 && powerSetting < MD9600_POWER_LEVELS.length) {
                 return MD9600_POWER_LEVELS[powerSetting];
             }
-            return "RAW " + powerSetting;
+            return "Код " + powerSetting;
         }
 
         String stepText() {
             return stepIndex >= 0 && stepIndex < STEP_TEXT.length ? STEP_TEXT[stepIndex]
-                    : "RAW " + stepIndex;
+                    : "Код " + stepIndex;
         }
 
         String taText(int value) {
-            return value >= 0 && value < TA_TEXT.length ? TA_TEXT[value] : "RAW " + value;
+            return value >= 0 && value < TA_TEXT.length ? TA_TEXT[value] : "Код " + value;
         }
 
         String squelchText() {
-            if (!squelchOverride || squelchLevel == 0) return "Master/Default";
-            if (squelchLevel == 1) return "Open";
+            if (!squelchOverride || squelchLevel == 0) return "Общая настройка";
+            if (squelchLevel == 1) return "Открыт";
             if (squelchLevel >= 2 && squelchLevel <= 20) return ((squelchLevel - 1) * 5) + "%";
-            if (squelchLevel == 21) return "Closed";
-            return "RAW " + squelchLevel;
+            if (squelchLevel == 21) return "Закрыт";
+            return "Код " + squelchLevel;
         }
 
         String oneLine() {
             String prefix = index > 0 ? index + ". " : "";
-            String base = String.format(Locale.US, "%s%s  %.5f / %.5f MHz",
+            String base = String.format(Locale.US, "%s%s  %.5f / %.5f МГц",
                     prefix, name, rxHz / 1_000_000.0, txHz / 1_000_000.0);
             if (digital) {
                 return base + "  DMR CC" + colorCode + " TS" + timeSlot
@@ -298,9 +311,9 @@ final class CodeplugModel {
 
         String typeText() {
             if (type == 0) return "TG";
-            if (type == 1) return "PC";
-            if (type == 2) return "ALL";
-            return "TYPE" + type;
+            if (type == 1) return "Индивидуальный";
+            if (type == 2) return "Общий вызов";
+            return "Тип " + type;
         }
 
         String oneLine() {
@@ -409,7 +422,7 @@ final class CodeplugModel {
         }
 
         String oneLine() {
-            return index + ". " + name + String.format(Locale.US, "  %.5f MHz", txHz / 1_000_000.0);
+            return index + ". " + name + String.format(Locale.US, "  %.5f МГц", txHz / 1_000_000.0);
         }
     }
 
@@ -418,8 +431,8 @@ final class CodeplugModel {
         final double ageDays;
         Satellite(String name, double ageDays) { this.name = name; this.ageDays = ageDays; }
         String oneLine() {
-            return Double.isNaN(ageDays) ? name + "  epoch ?"
-                    : String.format(Locale.US, "%s  %.1f d", name, ageDays);
+            return Double.isNaN(ageDays) ? name + "  эпоха неизвестна"
+                    : String.format(Locale.US, "%s  %.1f дн.", name, ageDays);
         }
     }
 
@@ -515,10 +528,10 @@ final class CodeplugModel {
     }
 
     String compactSummary() {
-        return "Channels " + channels.size()
-                + " • Zones " + zones.size()
-                + " • Contacts " + contacts.size()
-                + " • RX Groups " + rxGroups.size()
+        return "Каналы " + channels.size()
+                + " • Зоны " + zones.size()
+                + " • Контакты " + contacts.size()
+                + " • Группы приёма " + rxGroups.size()
                 + " • APRS " + aprsConfigs.size()
                 + " • DTMF " + dtmfContacts.size();
     }
