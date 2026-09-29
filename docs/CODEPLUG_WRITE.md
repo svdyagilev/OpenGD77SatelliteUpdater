@@ -59,3 +59,32 @@ backup failure (zero writes), first-sector verification failure/disconnect (no
 retry or later writes), unsupported raw edits, no-op selection, subset baseline,
 and preserving externally changed unselected bytes in a shared sector.
 Physical MD-9600 write testing must be performed on hardware; not claimed by CI.
+
+## 0.6.2 extension
+
+Three additional selectable sections: boot screen (snapshot block 7), RX groups
+(block 11), APRS (block 3). Boot preflight compares only the first 0x48 bytes,
+excluding cached VFOs in the same snapshot block. Full-sector reads preserve the
+actual current VFO bytes when boot is written. RX group writes additionally
+compare the original contact bank before any write.
+
+Primary references: qDMR `lib/opengd77base_codeplug.hh`
+(blob a98168b651ce0097600b51a3b0e317c5f3c146f4) and `.cc`, classes
+BootSettingsElement, GroupListElement/GroupListBankElement, APRSSettingsElement.
+Boot addresses independently match open-ham/OpenGD77
+`firmware/source/functions/codeplug.c` (0x7518, 0x7540, 0x7550).
+
+- Boot whitelist: relative byte 0 and 0x28..0x47 only.
+- RX groups: only original existing slots and their length byte; count is N+1,
+  contact references are 1-based little-endian words, unused entries zero.
+  Names use up to 15 characters plus 0xFF terminator.
+- APRS: existing records only. Name is CP1251 with the RUS lowercase-ya mapping;
+  route and comment are ASCII and zero-padded. Comment accepts 23 characters in
+  its 24-byte terminated field. TX is binary little-endian Hz/10 (NOT BCD).
+  Coordinates use sign bit 23, degrees in bits 15..22, decimal fraction x10000
+  in the low 15 bits. Only flag bits 0..2 are writable; symbol bytes 29..30,
+  reserved 59..60 and magic 62..63 remain unchanged.
+
+11 additional tests cover wire values, slot boundaries, empty groups, validation
+atomicity, field preservation, no-op edits, project round-trip, write subset
+rebasing, live VFO preservation and stale contact dependencies.

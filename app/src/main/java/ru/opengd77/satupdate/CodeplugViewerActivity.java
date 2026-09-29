@@ -46,7 +46,9 @@ public class CodeplugViewerActivity extends Activity {
             finish();
         });
         findViewById(R.id.editGeneralButton).setOnClickListener(v -> {
-            if (model != null) CodeplugEditDialogs.general(this, model.general, this::commitEdit);
+            if (model == null) return;
+            if (activeCategory == 10) CodeplugEditDialogs.boot(this, model.boot, this::commitEdit);
+            else CodeplugEditDialogs.general(this, model.general, this::commitEdit);
         });
         refreshSummary();
 
@@ -84,7 +86,7 @@ public class CodeplugViewerActivity extends Activity {
     private void showCategory(int category) {
         activeCategory = category;
         visibleObjects.clear();
-        findViewById(R.id.editGeneralButton).setVisibility(model != null && category == 13 ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10) ? View.VISIBLE : View.GONE);
         if (model == null) return;
         List<String> rows = new ArrayList<>();
         switch (category) {
@@ -364,7 +366,7 @@ public class CodeplugViewerActivity extends Activity {
         boolean loaded = model != null && CodeplugSession.project != null;
         listView.setVisibility(loaded ? View.VISIBLE : View.GONE);
         categorySpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
-        findViewById(R.id.editGeneralButton).setVisibility(loaded && activeCategory == 13 ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10) ? View.VISIBLE : View.GONE);
         if (!loaded) {
             summaryText.setText("Откройте файл через «Проект» или прочитайте радиостанцию с главного экрана.");
             return;

@@ -32,7 +32,9 @@ public class CodeplugWriteActivity extends Activity {
         int pad=(int)(16*getResources().getDisplayMetrics().density);body.setPadding(pad,pad,pad,pad);
         TextView title=new TextView(this);title.setText("Запись изменений • MD-9600");title.setTextSize(22);body.addView(title);
         sections=new CheckBox[CodeplugWritePlan.NAMES.length];
-        for(int i=0;i<sections.length;i++){sections[i]=new CheckBox(this);body.addView(sections[i]);}
+        ScrollView choices=new ScrollView(this);LinearLayout options=new LinearLayout(this);options.setOrientation(LinearLayout.VERTICAL);choices.addView(options);
+        for(int i=0;i<sections.length;i++){sections[i]=new CheckBox(this);options.addView(sections[i]);}
+        body.addView(choices,new LinearLayout.LayoutParams(-1,0,1));
         write=new Button(this);write.setText("Записать выбранные разделы");body.addView(write);
         Button backup=new Button(this);backup.setText("Сохранить последнюю резервную копию");body.addView(backup);
         ScrollView scroll=new ScrollView(this);status=new TextView(this);status.setTextSize(15);scroll.addView(status);
@@ -45,7 +47,7 @@ public class CodeplugWriteActivity extends Activity {
         try{
             project=CodeplugSession.project;
             if(project==null){project=CodeplugProjectStore.load(this);CodeplugSession.install(project);}
-            CodeplugWritePlan all=new CodeplugWritePlan(project,new boolean[]{true,true,true,true,true});
+            CodeplugWritePlan all=new CodeplugWritePlan(project,CodeplugWritePlan.allSections());
             for(int i=0;i<sections.length;i++){
                 sections[i].setText(CodeplugWritePlan.NAMES[i]+" — "+all.counts[i]+" байт");
                 sections[i].setEnabled(all.counts[i]>0);sections[i].setChecked(all.counts[i]>0);

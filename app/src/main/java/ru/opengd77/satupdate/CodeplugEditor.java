@@ -143,6 +143,88 @@ final class CodeplugEditor {
             default:throw new IllegalArgumentException("Неизвестное поле зоны");
         }
     }
+    static void boot(CodeplugSnapshot s,Map<String,String> fields){
+        for(Map.Entry<String,String> e:fields.entrySet())switch(e.getKey()){
+            case "mode":s.bootAndVfos[0]=(byte)number(e.getValue(),0,1,"Режим заставки");break;
+            case "line1":optionalText(s.bootAndVfos,0x28,16,e.getValue());break;
+            case "line2":optionalText(s.bootAndVfos,0x38,16,e.getValue());break;
+            default:throw new IllegalArgumentException("Неизвестное поле заставки");
+        }
+    }
+    private static void optionalText(byte[] b,int off,int len,String value){
+        if(value.isEmpty())Arrays.fill(b,off,off+len,(byte)255);else text(b,off,len,value);
+    }
+    static void rxGroup(CodeplugSnapshot s,int index,Map<String,String> fields){
+        CodeplugModel m=OpenGd77CodeplugDecoder.decode(s);
+        if(!hasGroup(m,index))throw new IllegalArgumentException("Группа приёма не найдена");
+        int o=0x80+(index-1)*0x50;
+        for(Map.Entry<String,String> e:fields.entrySet())switch(e.getKey()){
+            case "name":
+                // 15 characters plus terminator, compatible with the reference encoder.
+                byte[] name=new byte[16];Arrays.fill(name,(byte)255);text(name,0,15,e.getValue());
+                System.arraycopy(name,0,s.rxGroups,o,16);break;
+            case "members":
+                String value=e.getValue().trim();String[] vv=value.isEmpty()?new String[0]:value.split("[,;\\s]+");
+                if(vv.length>32)throw new IllegalArgumentException("В группе не более 32 контактов");
+                Set<Integer> seen=new HashSet<>();List<Integer> ids=new ArrayList<>();
+                for(String v:vv){int id=(int)number(v,1,1024,"Номер контакта");
+                    if(!seen.add(id))throw new IllegalArgumentException("Контакт "+id+" повторяется");
+                    if(!hasContact(m,id))throw new IllegalArgumentException("Контакт "+id+" не существует");ids.add(id);}
+                Arrays.fill(s.rxGroups,o+16,o+80,(byte)0);
+                for(int n=0;n<ids.size();n++)ByteUtil.putU16le(s.rxGroups,o+16+2*n,ids.get(n));
+                s.rxGroups[index-1]=(byte)(ids.size()+1);break;
+            default:throw new IllegalArgumentException("Неизвестное поле группы");
+        }
+    }
+    static int coordinate(String value,int limit){
+        try{
+            BigDecimal decimal=new BigDecimal(value.trim().replace(',','.'));
+            if(decimal.abs().compareTo(BigDecimal.valueOf(limit))>0)throw new ArithmeticException();
+            int scaled=decimal.abs().movePointRight(4).intValueExact();
+            return ((scaled/10000)<<15)|(scaled%10000)|(decimal.signum()<0?0x800000:0);
+        }catch(RuntimeException e){throw new IllegalArgumentException("Координата: −"+limit+"…"+limit+"°, до 4 знаков после запятой");}
+    }
+    private static void ascii(byte[] b,int off,int len,String value){
+        if(value.length()>len)throw new IllegalArgumentException("Допустимо не более "+len+" символов");
+        for(int i=0;i<value.length();i++)if(value.charAt(i)<32||value.charAt(i)>126)
+            throw new IllegalArgumentException("Поле APRS допускает только печатные символы ASCII");
+        Arrays.fill(b,off,off+len,(byte)0);
+        for(int i=0;i<value.length();i++)b[off+i]=(byte)value.charAt(i);
+    }
+    static void aprs(CodeplugSnapshot s,int index,Map<String,String> fields){
+        if(!hasAprs(OpenGd77CodeplugDecoder.decode(s),index))throw new IllegalArgumentException("Настройка APRS не найдена");
+        byte[] b=s.aprsConfigs;int o=(index-1)*64;
+        for(Map.Entry<String,String> e:fields.entrySet()){
+            String k=e.getKey(),v=e.getValue();switch(k){
+                case "name":text(b,o,8,v);break;
+                case "ssid":b[o+8]=(byte)number(v,0,15,"SSID");break;
+                case "latitude":case "longitude":
+                    int c=coordinate(v,k.equals("latitude")?90:180),p=o+(k.equals("latitude")?9:12);
+                    b[p]=(byte)c;b[p+1]=(byte)(c>>8);b[p+2]=(byte)(c>>16);break;
+                case "via1":case "via2":
+                    v=v.trim().toUpperCase(Locale.ROOT);
+                    if(!v.matches("[A-Z0-9]{0,6}"))throw new IllegalArgumentException("Маршрут: до 6 латинских букв и цифр, SSID вводится отдельно");
+                    ascii(b,o+(k.equals("via1")?15:22),6,v);break;
+                case "via1Ssid":case "via2Ssid":b[o+(k.equals("via1Ssid")?21:28)]=(byte)number(v,0,15,"SSID маршрута");break;
+                case "comment":if(v.length()>23)throw new IllegalArgumentException("Комментарий APRS: до 23 символов");ascii(b,o+31,24,v);break; // zero-terminated 24-byte field
+                case "tx":
+                    long hz;
+                    try{hz=new BigDecimal(v.trim().replace(',','.')).signum()==0?0:frequency(v);}
+                    catch(NumberFormatException e2){throw new IllegalArgumentException("Некорректная частота APRS");}
+                    ByteUtil.putU32le(b,o+55,hz/10);break; // binary, not channel BCD
+                case "baud300":flag(b,o+61,1,bool(v));break;
+                case "fixed":flag(b,o+61,2,bool(v));break;
+                case "qsy":flag(b,o+61,4,bool(v));break;
+                default:throw new IllegalArgumentException("Неизвестное поле APRS");
+            }
+        }
+        if(fields.containsKey("fixed")&&bool(fields.get("fixed"))){
+            for(CodeplugModel.AprsConfig a:OpenGd77CodeplugDecoder.decode(s).aprsConfigs)if(a.index==index){
+                if(Math.abs(a.latitude)>90||Math.abs(a.longitude)>180)
+                    throw new IllegalArgumentException("Укажите корректные фиксированные координаты");
+            }
+        }
+    }
     private static boolean hasContact(CodeplugModel m,int id){for(CodeplugModel.Contact c:m.contacts)if(c.index==id)return true;return false;}
     private static boolean hasDtmf(CodeplugModel m,int id){for(CodeplugModel.DtmfContact c:m.dtmfContacts)if(c.index==id)return true;return false;}
     private static boolean hasGroup(CodeplugModel m,int id){for(CodeplugModel.RxGroup g:m.rxGroups)if(g.index==id)return true;return false;}

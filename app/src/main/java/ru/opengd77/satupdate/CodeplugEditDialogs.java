@@ -67,10 +67,13 @@ final class CodeplugEditDialogs {
         f.text("name","Позывной / имя (до 8 символов)",g.radioName,false);f.text("id","DMR ID", ""+g.dmrId,true);f.show();
     }
     static boolean supported(Object o){return o instanceof CodeplugModel.Channel&&((CodeplugModel.Channel)o).index>0
-            ||o instanceof CodeplugModel.Zone||o instanceof CodeplugModel.Contact||o instanceof CodeplugModel.DtmfContact;}
+            ||o instanceof CodeplugModel.Zone||o instanceof CodeplugModel.Contact||o instanceof CodeplugModel.DtmfContact
+            ||o instanceof CodeplugModel.RxGroup||o instanceof CodeplugModel.AprsConfig;}
     static void edit(Activity a,Object o,CodeplugModel m,Commit commit){
         if(o instanceof CodeplugModel.Channel){channel(a,(CodeplugModel.Channel)o,m,commit);return;}
         if(o instanceof CodeplugModel.Zone){zone(a,(CodeplugModel.Zone)o,m,commit);return;}
+        if(o instanceof CodeplugModel.RxGroup){rxGroup(a,(CodeplugModel.RxGroup)o,m,commit);return;}
+        if(o instanceof CodeplugModel.AprsConfig){aprs(a,(CodeplugModel.AprsConfig)o,commit);return;}
         boolean dtmf=o instanceof CodeplugModel.DtmfContact;
         int index=dtmf?((CodeplugModel.DtmfContact)o).index:((CodeplugModel.Contact)o).index;
         String name=dtmf?((CodeplugModel.DtmfContact)o).name:((CodeplugModel.Contact)o).name;
@@ -82,6 +85,49 @@ final class CodeplugEditDialogs {
             f.text("number","ID / TG", ""+c.number,true);
             f.choice("type","Тип вызова",""+c.type,numbers(0,2),new String[]{"Групповой","Индивидуальный","Общий"});
             f.choice("ts","Переопределение таймслота",""+c.tsOverride,new String[]{"3","0","2"},new String[]{"Нет","TS1","TS2"});}
+        f.show();
+    }
+    static void boot(Activity a,CodeplugModel.BootInfo b,Commit commit){
+        Form f=new Form(a,"Загрузочный экран",changes->commit.apply(s->CodeplugEditor.boot(s,changes)));
+        f.choice("mode","Показывать при включении",""+b.introMode,new String[]{"0","1"},new String[]{"Изображение","Текст"});
+        f.text("line1","Строка 1 (до 16 символов, можно пустую)",b.line1,false);
+        f.text("line2","Строка 2 (до 16 символов, можно пустую)",b.line2,false);
+        f.label("Строки отображаются в режиме «Текст». Изображение заставки здесь не меняется.");f.show();
+    }
+    private static void rxGroup(Activity a,CodeplugModel.RxGroup g,CodeplugModel m,Commit commit){
+        Form f=new Form(a,"Группа приёма "+g.index,changes->commit.apply(s->CodeplugEditor.rxGroup(s,g.index,changes)));
+        f.text("name","Имя (до 15 символов)",g.name,false);
+        StringBuilder text=new StringBuilder();for(int id:g.contactIndices){if(text.length()>0)text.append(", ");text.append(id);}
+        EditText members=f.text("members","Номера контактов в нужном порядке (до 32)",text.toString(),false);
+        Button select=new Button(a);select.setText("Выбрать контакты по имени");f.body.addView(select);
+        select.setOnClickListener(v->{
+            List<Integer> selected=new ArrayList<>();
+            try{for(String x:members.getText().toString().trim().split("[,;\\s]+"))if(!x.isEmpty())selected.add(Integer.parseInt(x));}
+            catch(NumberFormatException e){new AlertDialog.Builder(a).setMessage("Проверьте номера контактов").setPositiveButton("OK",null).show();return;}
+            String[] labels=new String[m.contacts.size()];boolean[] checked=new boolean[labels.length];
+            for(int i=0;i<labels.length;i++){CodeplugModel.Contact c=m.contacts.get(i);labels[i]="#"+c.index+" · "+c.name+" · "+c.number;checked[i]=selected.contains(c.index);}
+            new AlertDialog.Builder(a).setTitle("Контакты группы").setMultiChoiceItems(labels,checked,(d,which,on)->{
+                int id=m.contacts.get(which).index;if(on&&!selected.contains(id))selected.add(id);else if(!on)selected.remove((Integer)id);
+            }).setNegativeButton("Отмена",null).setPositiveButton("Готово",(d,w)->{
+                StringBuilder value=new StringBuilder();for(int id:selected){if(value.length()>0)value.append(", ");value.append(id);}members.setText(value);
+            }).show();
+        });f.show();
+    }
+    private static void aprs(Activity a,CodeplugModel.AprsConfig ap,Commit commit){
+        Form f=new Form(a,"APRS "+ap.index,changes->commit.apply(s->CodeplugEditor.aprs(s,ap.index,changes)));
+        f.text("name","Имя (до 8 символов)",ap.name,false);
+        f.choice("ssid","SSID отправителя",""+ap.senderSsid,numbers(0,15),numbers(0,15));
+        f.text("tx","Частота передачи, МГц (0 — частота канала)",String.format(Locale.US,"%.6f",ap.txHz/1000000.0),false);
+        f.choice("baud300","Скорость",(ap.flags&1)!=0?"1":"0",new String[]{"0","1"},new String[]{"1200 бод","300 бод"});
+        f.text("via1","Маршрут 1 (до 6 букв A–Z и цифр)",ap.via1,false);
+        f.choice("via1Ssid","SSID маршрута 1",""+ap.via1Ssid,numbers(0,15),numbers(0,15));
+        f.text("via2","Маршрут 2 (до 6 букв A–Z и цифр)",ap.via2,false);
+        f.choice("via2Ssid","SSID маршрута 2",""+ap.via2Ssid,numbers(0,15),numbers(0,15));
+        f.text("comment","Комментарий (до 23 символов ASCII)",ap.comment,false);
+        f.check("fixed","Использовать фиксированные координаты",(ap.flags&2)!=0);
+        f.text("latitude","Широта, ° (−90…90)",String.format(Locale.US,"%.4f",ap.latitude),false);
+        f.text("longitude","Долгота, ° (−180…180)",String.format(Locale.US,"%.4f",ap.longitude),false);
+        f.check("qsy","Передавать QSY",(ap.flags&4)!=0);
         f.show();
     }
     private static void channel(Activity a,CodeplugModel.Channel c,CodeplugModel m,Commit commit){

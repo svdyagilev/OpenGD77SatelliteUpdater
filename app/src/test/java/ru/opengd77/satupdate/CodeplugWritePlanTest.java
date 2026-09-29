@@ -7,7 +7,7 @@ import java.io.*;
 import java.util.*;
 
 public class CodeplugWritePlanTest {
-    static final boolean[] ALL={true,true,true,true,true};
+    static final boolean[] ALL=CodeplugWritePlan.allSections();
     static class Memory implements CodeplugWritePlan.Memory {
         byte[] data=new byte[0xb0000];int writes;boolean backedUp;int corrupt=-1,failAt=-1;
         Memory(CodeplugProject p){
@@ -53,7 +53,7 @@ public class CodeplugWritePlanTest {
     }
     @Test public void subsetUpdatesBaselineAndRetainsUnselectedEdits()throws Exception{
         CodeplugProject p=project().edit(s->{CodeplugEditor.general(s,fields("name","TEST"));CodeplugEditor.channel(s,1,fields("rx","433.1"));});
-        CodeplugWritePlan plan=new CodeplugWritePlan(p,new boolean[]{true,false,false,false,false});
+        CodeplugWritePlan plan=new CodeplugWritePlan(p,new boolean[]{true,false,false,false,false,false,false,false});
         Memory m=new Memory(p);byte[] channels=m.read(0x3780,0x1c10);execute(plan,m);
         assertArrayEquals(channels,m.read(0x3780,0x1c10));
         CodeplugProject next=plan.completedProject();assertTrue(next.changedBytes()>0);assertFalse(next.canUndo());
@@ -99,7 +99,7 @@ public class CodeplugWritePlanTest {
         CodeplugSnapshot raw=fixture();CodeplugEditor.text(raw.dtmfContacts,62*32,16,"LAST");
         Arrays.fill(raw.dtmfContacts,62*32+16,63*32,(byte)255);raw.dtmfContacts[62*32+16]=1;
         CodeplugProject p=new CodeplugProject(raw,project().identity).edit(s->{CodeplugEditor.contact(s,63,true,fields("name","TEST"));CodeplugEditor.channel(s,1,fields("name","NEW"));});
-        CodeplugWritePlan plan=new CodeplugWritePlan(p,new boolean[]{false,false,false,true,false});Memory m=new Memory(p);
+        CodeplugWritePlan plan=new CodeplugWritePlan(p,new boolean[]{false,false,false,true,false,false,false,false});Memory m=new Memory(p);
         m.data[0x3780+32]^=8;byte[] before=m.data.clone();
         for(Map.Entry<Integer,Byte> e:plan.changes.entrySet())before[e.getKey()]=e.getValue();
         execute(plan,m);assertArrayEquals(before,m.data);
