@@ -44,14 +44,17 @@ public class CodeplugViewerActivity extends Activity {
                 + model.compactSummary() + "\n"
                 + "Прочитано: " + model.rawBytes + " байт • просмотр codeplug • только чтение");
 
-        String[] categories = {"Обзор", "Каналы", "VFO A/B", "Зоны", "DMR контакты",
-                "Группы приёма", "Списки сканирования", "APRS", "DTMF контакты", "DTMF настройки",
-                "Заставка", "Сведения о станции", "Спутники"};
+        String[] categories = {"Обзор", "Загрузочный экран", "DMR ID и позывной",
+                "Ограничения частот", "Настройки DTMF", "Настройки APRS",
+                "Контакты DMR", "Контакты DTMF", "Списки групп", "Зоны", "Каналы",
+                "VFO A/B", "Настройки рации", "Списки сканирования",
+                "Сведения о станции", "Спутники"};
+        final int[] categoryIds = {0, 10, 13, 14, 9, 7, 4, 8, 5, 3, 1, 2, 15, 6, 11, 12};
         categorySpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item, categories));
         categorySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                showCategory(position);
+                showCategory(categoryIds[position]);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -77,12 +80,6 @@ public class CodeplugViewerActivity extends Activity {
         List<String> rows = new ArrayList<>();
         switch (category) {
             case 0:
-                addText(rows, "Имя станции: " + emptyDash(model.general.radioName));
-                addText(rows, "DMR ID: " + model.general.dmrId);
-                addText(rows, "Версия codeplug: " + model.general.codeplugVersion);
-                addText(rows, "Чувствительность VOX: " + model.general.voxSense);
-                addText(rows, String.format(Locale.US, "Общие флаги (HEX): %02X %02X %02X %02X",
-                        model.general.flag1, model.general.flag2, model.general.flag3, model.general.flag4));
                 addText(rows, "Каналы: " + model.channels.size() + " / 1024");
                 addText(rows, "Зоны: " + model.zones.size() + " / 250");
                 addText(rows, "DMR контакты: " + model.contacts.size() + " / 1024");
@@ -147,6 +144,20 @@ public class CodeplugViewerActivity extends Activity {
                 }
                 if (rows.isEmpty()) addText(rows, "Данные спутников (TLV) не найдены или пусты");
                 break;
+            case 13:
+                addText(rows, "DMR ID: " + model.general.dmrId);
+                addText(rows, "Позывной / имя станции: " + emptyDash(model.general.radioName));
+                break;
+            case 14:
+                addText(rows, "Границы UHF: " + model.deviceInfo.uhfRangeText());
+                addText(rows, "Границы VHF: " + model.deviceInfo.vhfRangeText());
+                addText(rows, "Границы прочитаны из codeplug и могут отличаться от текущих ограничений передачи в прошивке.");
+                break;
+            case 15:
+                addText(rows, "Чувствительность VOX: " + model.general.voxSense);
+                addText(rows, String.format(Locale.US, "Общие флаги (HEX): %02X %02X %02X %02X",
+                        model.general.flag1, model.general.flag2, model.general.flag3, model.general.flag4));
+                break;
         }
         listView.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, rows));
     }
@@ -181,15 +192,8 @@ public class CodeplugViewerActivity extends Activity {
         addText(rows, "Строка идентификации FW (USB): " + available(d.liveFirmware));
         addText(rows, "Модель из codeplug: " + stored(d.model));
         addText(rows, "Серийный номер: " + stored(d.serial));
-        addText(rows, "Версия CPS из codeplug: " + stored(d.cpsVersion));
-        addText(rows, "Аппаратная версия (HW): " + stored(d.hardwareVersion));
-        addText(rows, "Поле FW из codeplug: " + stored(d.firmwareVersion));
-        addText(rows, "Версия DSP из codeplug: " + stored(d.dspVersion));
-        addText(rows, "Границы UHF: " + d.uhfRangeText());
-        addText(rows, "Границы VHF: " + d.vhfRangeText());
         addText(rows, "Модель и строка идентификации FW получены по USB. Эта строка может не содержать номер версии. Остальные поля — из codeplug; "
-                + "они могут быть пустыми или относиться к прежней прошивке. "
-                + "Границы из codeplug не обозначают текущие ограничения передачи.");
+                + "они могут быть пустыми или относиться к прежней прошивке.");
     }
 
     private void showDetails(Object obj) {
