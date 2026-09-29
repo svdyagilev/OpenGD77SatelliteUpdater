@@ -68,7 +68,7 @@ public class CodeplugReadActivity extends Activity {
         else registerReceiver(usbReceiver, f);
 
         log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
-        log("v0.5.5 Просмотр codeplug • только чтение");
+        log("Просмотр codeplug • только чтение");
         log("Читаются известные EEPROM/FLASH блоки, Сведения о станции, VFO, APRS, DTMF и Спутники.");
         log("Полная запись codeplug в этой версии отключена.");
 

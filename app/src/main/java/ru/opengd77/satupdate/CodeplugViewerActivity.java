@@ -46,7 +46,7 @@ public class CodeplugViewerActivity extends Activity {
 
         String[] categories = {"Обзор", "Каналы", "VFO A/B", "Зоны", "DMR контакты",
                 "Группы приёма", "Списки сканирования", "APRS", "DTMF контакты", "DTMF настройки",
-                "Заставка / Быстрые клавиши", "Сведения о станции", "Спутники"};
+                "Заставка", "Сведения о станции", "Спутники"};
         categorySpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item, categories));
         categorySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -81,7 +81,7 @@ public class CodeplugViewerActivity extends Activity {
                 addText(rows, "DMR ID: " + model.general.dmrId);
                 addText(rows, "Версия codeplug: " + model.general.codeplugVersion);
                 addText(rows, "Чувствительность VOX: " + model.general.voxSense);
-                addText(rows, String.format(Locale.US, "Общие флаги: %02X %02X %02X %02X",
+                addText(rows, String.format(Locale.US, "Общие флаги (HEX): %02X %02X %02X %02X",
                         model.general.flag1, model.general.flag2, model.general.flag3, model.general.flag4));
                 addText(rows, "Каналы: " + model.channels.size() + " / 1024");
                 addText(rows, "Зоны: " + model.zones.size() + " / 250");
@@ -171,18 +171,14 @@ public class CodeplugViewerActivity extends Activity {
     private void showBoot(List<String> rows) {
         CodeplugModel.BootInfo b = model.boot;
         addText(rows, "Заставка: " + (b.introMode == 1 ? "Текст" : b.introMode == 0 ? "Изображение" : "Код " + b.introMode));
-        addText(rows, "Пароль при включении: " + (b.passwordEnabled ? "включён" : "выключен") + " (PIN не показывается)");
         addText(rows, "Строка 1: " + emptyDash(b.line1));
         addText(rows, "Строка 2: " + emptyDash(b.line2));
-        for (int i = 0; i < b.quickKeys.size(); i++) {
-            addText(rows, String.format(Locale.US, "Быстрая клавиша %d: 0x%04X", i, b.quickKeys.get(i)));
-        }
     }
 
     private void showDeviceInfo(List<String> rows) {
         CodeplugModel.DeviceInfo d = model.deviceInfo;
         addText(rows, "Модель (USB): " + available(d.liveModel));
-        addText(rows, "Прошивка (FW, USB): " + available(d.liveFirmware));
+        addText(rows, "Строка идентификации FW (USB): " + available(d.liveFirmware));
         addText(rows, "Модель из codeplug: " + stored(d.model));
         addText(rows, "Серийный номер: " + stored(d.serial));
         addText(rows, "Версия CPS из codeplug: " + stored(d.cpsVersion));
@@ -191,7 +187,7 @@ public class CodeplugViewerActivity extends Activity {
         addText(rows, "Версия DSP из codeplug: " + stored(d.dspVersion));
         addText(rows, "Границы UHF: " + d.uhfRangeText());
         addText(rows, "Границы VHF: " + d.vhfRangeText());
-        addText(rows, "Модель и текущая прошивка получены по USB. Остальные поля — из codeplug; "
+        addText(rows, "Модель и строка идентификации FW получены по USB. Эта строка может не содержать номер версии. Остальные поля — из codeplug; "
                 + "они могут быть пустыми или относиться к прежней прошивке. "
                 + "Границы из codeplug не обозначают текущие ограничения передачи.");
     }
