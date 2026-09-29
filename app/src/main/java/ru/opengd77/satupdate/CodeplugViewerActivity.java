@@ -249,10 +249,10 @@ public class CodeplugViewerActivity extends Activity {
 
     private String channelDetails(CodeplugModel.Channel c) {
         StringBuilder b = new StringBuilder();
-        b.append(String.format(Locale.US, "RX: %.6f МГц\nTX: %.6f МГц\nРежим: %s\n",
-                c.rxHz / 1_000_000.0, c.txHz / 1_000_000.0, c.digital ? "DMR" : "FM"));
+        b.append(String.format(Locale.US, "[Общие настройки]\nРежим: %3$s\nПриём: %1$.6f МГц\nПередача: %2$.6f МГц\n",
+                c.rxHz / 1_000_000.0, c.txHz / 1_000_000.0, c.digital ? "Цифровой (DMR)" : "Аналоговый (FM)"));
         b.append("Мощность: ").append(c.powerText()).append('\n');
-        b.append("TOT: ").append(c.totSeconds == 0 ? "выключен" : c.totSeconds + " с").append('\n');
+        b.append("Ограничение передачи: ").append(c.totSeconds == 0 ? "выключен" : c.totSeconds + " с").append('\n');
         b.append("Шаг частоты: ").append(c.stepText()).append('\n');
         b.append("Только приём: ").append(yesNo(c.rxOnly)).append('\n');
         b.append("VOX: ").append(yesNo(c.vox)).append('\n');
@@ -260,9 +260,10 @@ public class CodeplugViewerActivity extends Activity {
         b.append("Экономайзер: ").append(c.ecoEnabled ? "включён" : "выключен").append('\n');
         b.append("Пропуск при сканировании зоны: ").append(yesNo(c.zoneSkip)).append('\n');
         b.append("Пропуск при сканировании всех каналов: ").append(yesNo(c.allSkip)).append('\n');
-        b.append("Быстрый вызов (RUS): ").append(yesNo(c.fastCall)).append('\n');
-        b.append("Приоритет (RUS): ").append(yesNo(c.priority)).append('\n');
+        b.append("Быстрый вызов: ").append(yesNo(c.fastCall)).append('\n');
+        b.append("Приоритетное сканирование: ").append(yesNo(c.priority)).append('\n');
 
+        b.append("\n[Геопозиционирование]\n");
         if (c.useLocation) {
             b.append(String.format(Locale.US, "Использовать координаты: да\nШирота/долгота: %.4f / %.4f\n", c.latitude, c.longitude));
         } else {
@@ -270,40 +271,23 @@ public class CodeplugViewerActivity extends Activity {
         }
 
         if (c.digital) {
-            b.append("\n[DMR]\nЦветовой код: ").append(c.colorCode)
+            b.append("\n[Цифровая связь (DMR)]\nЦветовой код: ").append(c.colorCode)
                     .append("\nТаймслот: ").append(c.timeSlot)
                     .append("\nКонтакт: ").append(refContact(c.contactIndex))
                     .append("\nГруппа приёма: ").append(refRxGroup(c.rxGroupIndex))
                     .append("\nDMR ID канала: ").append(c.optionalDmrId == 0 ? "—" : c.optionalDmrId)
-                    .append("\nПринудительный DMO: ").append(yesNo(c.forceDmo))
+                    .append("\nПрямая связь (DMO): ").append(yesNo(c.forceDmo))
                     .append("\nРоуминг: ").append(yesNo(c.roaming))
                     .append("\nПередача псевдонима (TA), TS1: ").append(c.taText(c.taTxTs1))
                     .append("\nПередача псевдонима (TA), TS2: ").append(c.taText(c.taTxTs2));
         } else {
-            b.append("\n[FM]\nСубтон приёма: ").append(c.rxTone.displayText())
+            b.append("\n[Аналоговая связь (FM)]\nСубтон приёма: ").append(c.rxTone.displayText())
                     .append("\nСубтон передачи: ").append(c.txTone.displayText())
                     .append("\nПолоса: ").append(c.wide25k ? "25 кГц" : "12.5 кГц")
                     .append("\nШумоподавитель: ").append(c.squelchText())
                     .append("\nНастройка APRS: ").append(refAprs(c.aprsConfigIndex));
         }
 
-        b.append("\n\n[Служебные поля / исходные значения]\nРазрешён прямой канал (Talkaround): ").append(yesNo(c.allowTalkaround))
-                .append("\nSTE: ").append(c.ste)
-                .append(" • NonSTE: ").append(c.nonSte)
-                .append(" • DataPL: ").append(yesNo(c.dataPl))
-                .append("\nТип PTT ID: ").append(c.pttidType)
-                .append(" • Двойная ёмкость: ").append(yesNo(c.dualCapacity))
-                .append("\nПредпочтение синхронизации: ").append(c.timingPreference)
-                .append(" • ARS: ").append(c.ars)
-                .append(" • Переключатель ключа: ").append(c.keySwitch)
-                .append("\nЗаголовок данных UDP: ").append(yesNo(c.udpDataHead))
-                .append(" • Разрешено прерывание передачи: ").append(yesNo(c.allowTxInterrupt))
-                .append("\nЧастота прерывания передачи: ").append(yesNo(c.txInterruptFreq))
-                .append(" • Индивидуальный вызов: ").append(yesNo(c.privateCall))
-                .append(String.format(Locale.US,
-                        "\nRUS=%02X Libre=%02X flag1=%02X flag2=%02X flag3=%02X flag4=%02X",
-                        c.rawOpenGd77Rus, c.rawLibreFlags, c.rawFlag1, c.rawFlag2,
-                        c.rawFlag3, c.rawFlag4));
         return b.toString();
     }
 
