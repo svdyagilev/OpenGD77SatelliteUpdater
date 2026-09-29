@@ -34,6 +34,12 @@ final class CodeplugProject {
         return new CodeplugProject(original,next,identity,history);
     }
     boolean canUndo() { return !undo.isEmpty(); }
+    CodeplugProject acceptWritten(Set<Integer> writtenBlocks) {
+        CodeplugSnapshot baseline=copy(original);
+        byte[][] a=blocks(baseline), b=blocks(working);
+        for(int block:writtenBlocks)System.arraycopy(b[block],0,a[block],0,a[block].length);
+        return new CodeplugProject(baseline,copy(working),identity,new ArrayList<>());
+    }
     CodeplugProject undo() {
         if(!canUndo()) return this;
         List<CodeplugSnapshot> history=new ArrayList<>(undo);

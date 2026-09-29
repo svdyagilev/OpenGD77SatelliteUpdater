@@ -10,6 +10,11 @@
         android:usesCleartextTraffic="false">
 
         <activity
+            android:name=".CodeplugWriteActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|density|fontScale|locale|layoutDirection"
+            android:exported="false" />
+
+        <activity
             android:name=".CodeplugViewerActivity"
             android:exported="false" />
 

@@ -17,6 +17,7 @@ final class UsbCdcSerialTransport implements Closeable {
     static final int VID = 0x1FC9;
     static final int PID = 0x0094;
 
+    private static UsbCdcSerialTransport owner;
     private final UsbManager manager;
     private UsbDevice device;
     private UsbDeviceConnection connection;
@@ -58,29 +59,27 @@ final class UsbCdcSerialTransport implements Closeable {
     }
 
     void open(UsbDevice d) throws IOException {
-        close();
-        device = d;
-        CdcAcmSerialDriver driver = new CdcAcmSerialDriver(d);
-        if (driver.getPorts().isEmpty()) throw new IOException("CDC ACM serial port not found");
-
-        connection = manager.openDevice(d);
-        if (connection == null) throw new IOException("Cannot open USB device (permission?)");
-
-        port = driver.getPorts().get(0);
-        try {
-            port.open(connection);
-            port.setParameters(115200, UsbSerialPort.DATABITS_8,
-                    UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
-            UsbEndpoint in = port.getReadEndpoint();
-            if (in != null && in.getMaxPacketSize() > 0) readPacketSize = in.getMaxPacketSize();
-            readPacketSize = Math.max(64, readPacketSize);
-            pending = new byte[0];
-            pendingOffset = 0;
-        } catch (Exception e) {
-            try { port.close(); } catch (Exception ignored) {}
-            port = null;
-            connection = null;
-            throw e instanceof IOException ? (IOException)e : new IOException(e);
+        synchronized (UsbCdcSerialTransport.class) {
+            close();
+            if (owner != null) throw new IOException("USB занят другой операцией. Дождитесь её завершения.");
+            owner = this;
+            try {
+                device = d;
+                CdcAcmSerialDriver driver = new CdcAcmSerialDriver(d);
+                if (driver.getPorts().isEmpty()) throw new IOException("CDC ACM serial port not found");
+                connection = manager.openDevice(d);
+                if (connection == null) throw new IOException("Cannot open USB device (permission?)");
+                port = driver.getPorts().get(0);
+                port.open(connection);
+                port.setParameters(115200, UsbSerialPort.DATABITS_8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+                UsbEndpoint in = port.getReadEndpoint();
+                if (in != null && in.getMaxPacketSize() > 0) readPacketSize = in.getMaxPacketSize();
+                readPacketSize = Math.max(64, readPacketSize);
+                pending = new byte[0]; pendingOffset = 0;
+            } catch (Exception e) {
+                close();
+                throw e instanceof IOException ? (IOException)e : new IOException(e);
+            }
         }
     }
 
@@ -128,6 +127,7 @@ final class UsbCdcSerialTransport implements Closeable {
     }
 
     @Override public void close() {
+        synchronized (UsbCdcSerialTransport.class) {
         if (port != null) {
             try { port.close(); } catch (Exception ignored) {}
         } else if (connection != null) {
@@ -138,5 +138,7 @@ final class UsbCdcSerialTransport implements Closeable {
         device = null;
         pending = new byte[0];
         pendingOffset = 0;
+        if (owner == this) owner = null;
+        }
     }
 }

@@ -41,6 +41,10 @@ public class CodeplugViewerActivity extends Activity {
         findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> returnToMain());
 
         findViewById(R.id.projectMenuButton).setOnClickListener(v -> projectMenu());
+        findViewById(R.id.writeCodeplugButton).setOnClickListener(v -> {
+            startActivity(new Intent(this, CodeplugWriteActivity.class));
+            finish();
+        });
         findViewById(R.id.editGeneralButton).setOnClickListener(v -> {
             if (model != null) CodeplugEditDialogs.general(this, model.general, this::commitEdit);
         });
@@ -368,7 +372,7 @@ public class CodeplugViewerActivity extends Activity {
         String name = model.general.radioName.isEmpty() ? "без имени" : model.general.radioName;
         summaryText.setText(name + " • DMR ID " + model.general.dmrId + "\n" + model.compactSummary()
                 + "\nИзменено байтов: " + CodeplugSession.project.changedBytes()
-                + " • автосохранение на телефоне\nЗапись в радиостанцию отключена");
+                + " • автосохранение на телефоне\nЗапись выбранных разделов — кнопка «Записать»");
     }
 
     private void commitEdit(CodeplugProject.Change change) throws Exception {

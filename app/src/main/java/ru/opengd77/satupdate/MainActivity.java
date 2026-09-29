@@ -154,7 +154,12 @@ public class MainActivity extends Activity {
             log("Ошибка Satellites.txt: " + e.getMessage());
         }
 
-        findViewById(R.id.editorProjectButton).setOnClickListener(v -> startActivity(new Intent(this, CodeplugViewerActivity.class)));
+        findViewById(R.id.editorProjectButton).setOnClickListener(v -> {
+            if (radioBusy) return;
+            transport.close();
+            startActivity(new Intent(this, CodeplugViewerActivity.class));
+            finish();
+        });
 
         autoUpdateButton.setOnClickListener(v -> startAutomaticUpdate());
         downloadButton.setOnClickListener(v -> downloadTle());
@@ -594,6 +599,7 @@ public class MainActivity extends Activity {
     }
 
     private void applyButtonState() {
+        findViewById(R.id.editorProjectButton).setEnabled(!radioBusy);
         autoUpdateButton.setEnabled(!radioBusy);
         connectButton.setEnabled(!radioBusy);
         dryRunButton.setEnabled(!radioBusy);

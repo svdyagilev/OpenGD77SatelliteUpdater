@@ -70,7 +70,7 @@ public class CodeplugReadActivity extends Activity {
         log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
         log("Чтение codeplug для редактора");
         log("Читаются известные EEPROM/FLASH блоки, Сведения о станции, VFO, APRS, DTMF и Спутники.");
-        log("Правки выполняются в локальном проекте; запись codeplug в рацию отключена.");
+        log("Правки сохраняются в проекте. Запись выполняется отдельно кнопкой «Записать».");
 
         getWindow().getDecorView().post(this::beginRead);
     }
@@ -147,6 +147,7 @@ public class CodeplugReadActivity extends Activity {
                 CodeplugProject project = new CodeplugProject(raw, identity);
                 CodeplugProjectStore.save(this, project);
                 CodeplugSession.install(project);
+                CodeplugWriteBackup.clear(this);
                 log("OK: " + model.compactSummary());
                 log("Имя станции: " + model.general.radioName + " • DMR ID " + model.general.dmrId);
                 log("Запись во FLASH/EEPROM не выполнялась.");

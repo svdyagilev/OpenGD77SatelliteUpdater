@@ -78,7 +78,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Codeplug • v0.5 read-only"
+            android:text="Codeplug • редактор и запись"
             android:textStyle="bold" />
 
         <TextView
@@ -87,7 +87,7 @@
             android:layout_height="wrap_content"
             android:paddingTop="6dp"
             android:paddingBottom="8dp"
-            android:text="Чтение радиостанции и редактирование локального проекта. Запись codeplug в рацию пока отключена." />
+            android:text="Чтение, редактирование проекта и запись выбранных разделов в MD-9600." />
 
         <ru.opengd77.satupdate.CodeplugReadButton
             android:id="@+id/readCodeplugButton"
