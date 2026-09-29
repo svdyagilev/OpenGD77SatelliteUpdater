@@ -15,7 +15,7 @@ final class CodeplugWriteBackup {
     static File latest(Context c){
         File[] files=new File(c.getFilesDir(),"codeplug-backups").listFiles((d,n)->n.endsWith(".zip"));
         if(files==null||files.length==0)return null;
-        Arrays.sort(files,Comparator.comparing(File::getName));return files[files.length-1];
+        Arrays.sort(files,(a,b)->a.getName().compareTo(b.getName()));return files[files.length-1];
     }
     static void save(Context c,CodeplugWritePlan plan,List<CodeplugWritePlan.Sector> sectors)throws IOException{
         File dir=new File(c.getFilesDir(),"codeplug-backups");
