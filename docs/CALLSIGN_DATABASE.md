@@ -1,4 +1,4 @@
-# MD-9600 callsign database (v0.8.0)
+# MD-9600 callsign database (v0.8.2)
 
 The database is separate from codeplug contacts and is replaced as a whole.
 No call-sign data is uploaded to a service; RadioID is downloaded via HTTPS.
@@ -59,8 +59,26 @@ This is logical removal, not secure erasure of old records.
 The default text length is 48; the preview shows all selected fields and marks
 any text truncated by the chosen on-radio entry length.
 
-The new module has unit coverage for encoding, record-aligned split, CSV quoting,
+## Reading and local editing
+
+The Android reader first checks the `IdN001` header and count, then reads only
+the record-aligned ranges in the two callsign regions. Bulk requests are 1024
+bytes, below the firmware CPS response limit. It checks that the header did not
+change during the read, that the returned ranges are complete, and that decoded
+IDs are valid and strictly increasing. Unknown formats and incomplete images
+are rejected without writing to flash.
+
+The editor adds, changes, or removes entries in the in-memory prepared database.
+IDs must be unique and in the supported 24-bit range. Text is normalized to the
+radio character table and clipped to the selected entry length. Changes reach
+the radio only after the separate full-database write action; the existing
+backup, preflight, sector verification, and header-last write sequence remains
+in force. Unit coverage exercises split-region reads, binary round trips,
+invalid headers/counts, and local add/edit/delete behavior.
+
+The module has unit coverage for encoding, record-aligned split, CSV quoting,
 filtering, sorting, duplicate/invalid rows, all length choices, exact preview,
 hardware/region gates, backup failure, stale preflight, no-op, interrupted write,
 header-last publication, read-back failure and preservation of unrelated bytes.
-It has not yet been exercised against physical USB hardware by the developer.
+The user confirmed on a physical MD-9600 that database download, radio read,
+write, and clear all work correctly in v0.8.2.
