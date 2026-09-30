@@ -56,7 +56,8 @@ final class SatelliteBankInspector {
     static Summary inspect(byte[] image, long nowMillis) {
         AdditionalSettingsImage parsed = new AdditionalSettingsImage(image);
         AdditionalSettingsImage.Tlv sat = parsed.findTlv(AdditionalSettingsImage.SATELLITE_TLV_ID);
-        if (sat == null || sat.payloadLength != OpenGd77SatelliteEncoder.SATELLITE_PAYLOAD_SIZE) {
+        if (sat == null) return new Summary(new ArrayList<>(), Double.NaN, Double.NaN);
+        if (sat.payloadLength != OpenGd77SatelliteEncoder.SATELLITE_PAYLOAD_SIZE) {
             throw new IllegalStateException("Satellite TLV ID 3/0x09D8 not found");
         }
 

@@ -408,8 +408,8 @@ public class MainActivity extends Activity {
                 originalAdditional = driver.readAdditionalSettings();
                 AdditionalSettingsImage img = new AdditionalSettingsImage(originalAdditional);
                 AdditionalSettingsImage.Tlv sat = img.findTlv(3);
-                if (sat == null) throw new IllegalStateException("Satellite TLV ID 3 не найден");
-                log("Satellite TLV: offset 0x" + Integer.toHexString(sat.headerOffset)
+                if (sat == null) log("Блок спутников отсутствует. При записи будет создан список из Satellites.txt и пригодных TLE.");
+                else log("Satellite TLV: offset 0x" + Integer.toHexString(sat.headerOffset)
                         + ", payload 0x" + Integer.toHexString(sat.payloadLength));
 
                 bankSummary = SatelliteBankInspector.inspect(originalAdditional, System.currentTimeMillis());
@@ -514,7 +514,9 @@ public class MainActivity extends Activity {
             b.append("  0x").append(Integer.toHexString(0x20 + s)).append(": ")
                     .append(changed ? "CHANGED" : "unchanged").append('\n');
         }
-        b.append("Проверка границ TLV: OK — только orbital bytes 0x08..0x2F существующих записей.\n");
+        b.append(plan.createsSatelliteBank
+                ? "Создание списка из Satellites.txt: новый TLV в свободной памяти; остальные блоки сохранены.\n"
+                : "Проверка границ TLV: OK — только orbital bytes 0x08..0x2F существующих записей.\n");
         return b.toString();
     }
 
@@ -528,14 +530,16 @@ public class MainActivity extends Activity {
             return;
         }
 
-        String message = "Источник: " + tleSourceLabel
+        String message = (plan.createsSatelliteBank
+                ? "В рации нет блока спутников. Будет создан список из Satellites.txt с названиями, частотами, субтонами, APRS и орбитальными данными.\n\n" : "")
+                + "Источник: " + tleSourceLabel
                 + "\nСпутников обновится: " + plan.changedRecords.size()
                 + "\nИзменённых байт: " + plan.changedBytes
                 + "\nFLASH-секторов: " + plan.changedSectorIndexes.size()
                 + "\n\nПеред записью автоматически будет создан backup 0x2000 байт, затем выполнены повторное чтение и полный read-back контроль.";
 
         new AlertDialog.Builder(this)
-                .setTitle("Обновить Keps?")
+                .setTitle(plan.createsSatelliteBank ? "Создать список спутников?" : "Обновить Keps?")
                 .setMessage(message)
                 .setNegativeButton("Отмена", (d, w) -> setOperationSummary("Обновление отменено пользователем"))
                 .setPositiveButton("Записать", (d, w) -> writeUpdate(plan))
@@ -545,12 +549,14 @@ public class MainActivity extends Activity {
     private void confirmUpdate() {
         if (updatePlan == null || updatePlan.changedBytes == 0 || radioBusy) return;
         final UpdatePlan plan = updatePlan;
-        String message = "Dry Run успешно завершён."
+        String message = (plan.createsSatelliteBank
+                ? "Будет создан список спутников из Satellites.txt с частотами, субтонами, APRS и орбитальными данными.\n\n" : "")
+                + "Dry Run успешно завершён."
                 + "\n\nИзменённых байт: " + plan.changedBytes
                 + "\nСекторов FLASH: " + plan.changedSectorIndexes.size()
                 + "\n\nПеред записью будет создан backup, FLASH считан повторно и каждый записанный сектор проверен read-back сравнением.";
         new AlertDialog.Builder(this)
-                .setTitle("Записать Keps?")
+                .setTitle(plan.createsSatelliteBank ? "Создать список спутников?" : "Записать Keps?")
                 .setMessage(message)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Записать", (d, w) -> writeUpdate(plan))
