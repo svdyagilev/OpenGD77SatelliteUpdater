@@ -11,14 +11,14 @@ public class CallsignDatabaseTest {
     @Test public void regionColumnsSortingDedupAndExactPreview()throws Exception {
         String csv="\ufeffRADIO_ID,CALLSIGN,FIRST_NAME,LAST_NAME,CITY,STATE,COUNTRY\r\n4010159,UN4GVI,Vyacheslav,,Almaty,None,Kazakhstan\r\n2500001,R1A,Other,,,,\r\n4010154,UN7PPV,Sergey,,Karaganda,Karaganda,Kazakhstan\r\n4010154,UN7PPV,Duplicate,,,,\r\nwrong,BAD,,,,,\r\n";
         CallsignDatabase d=read(csv,"401",16);assertEquals(2,d.entries.size());assertEquals(1,d.duplicates);assertEquals(1,d.skipped);assertEquals(5,d.sourceRows);
-        assertEquals(4010154,d.entries.get(0).id);assertEquals("UN7PPV Sergey Ka",d.entries.get(0).text);
+        assertEquals(4010154,d.entries.get(0).id);assertEquals("UN7PPV Sergey Karaganda Karaganda Kazakhstan",d.entries.get(0).text);assertEquals("UN7PPV Sergey Ka",d.entries.get(0).encoded);
         assertEquals(937163,CallsignDatabase.capacity(16));assertEquals(15,d.recordSize);
         assertArrayEquals(new byte[]{'I','d','N',0x59,'0','0','1',0,2,0,0,0},Arrays.copyOf(d.first,12));
-        for(int i=0;i<d.entries.size();i++){int off=12+i*d.recordSize;int id=(d.first[off]&255)|((d.first[off+1]&255)<<8)|((d.first[off+2]&255)<<16);assertEquals(d.entries.get(i).id,id);assertEquals(d.entries.get(i).text,CallsignDatabase.unpack(d.first,off+3,16));}
+        for(int i=0;i<d.entries.size();i++){int off=12+i*d.recordSize;int id=(d.first[off]&255)|((d.first[off+1]&255)<<8)|((d.first[off+2]&255)<<16);assertEquals(d.entries.get(i).id,id);assertEquals(d.entries.get(i).encoded,CallsignDatabase.unpack(d.first,off+3,16));}
     }
     @Test public void csvQuotedCommaEscapesAndMultiline()throws Exception {
         CallsignDatabase d=read("ID,Callsign,First Name,City\n4010001,UN1A,\"Sergey \"\"S\"\"\",\"Almaty,\nCity\"\n","",48);
-        assertEquals("UN1A Sergey .S. Almaty. City",d.entries.get(0).text);
+        assertEquals("UN1A Sergey .S. Almaty. City",d.entries.get(0).text);assertEquals("UN1A Sergey .S. Almaty. City",d.entries.get(0).encoded);
         d=read("DMRID;CALL;NAME;COUNTRY\r4010002;UN2A;Андрей;Казахстан\r","401,250",48);
         assertEquals("UN2A Andrey Kazakhstan",d.entries.get(0).text);
     }
@@ -41,7 +41,7 @@ public class CallsignDatabaseTest {
             for(int i=0;i<n0+1;i++)csv.append(1000000+i).append(",A1A,Name\n");
             CallsignDatabase d=read(csv.toString(),"",chars);assertEquals(12+n0*size,d.first.length);assertEquals(size,d.second.length);
             int id=(d.second[0]&255)|((d.second[1]&255)<<8)|((d.second[2]&255)<<16);assertEquals(1000000+n0,id);
-            assertEquals("A1A Name",CallsignDatabase.unpack(d.second,3,chars));
+            assertEquals(d.entries.get(n0).encoded,CallsignDatabase.unpack(d.second,3,chars));
         }
     }
     @Test public void explicitClearHasValidZeroCountHeader(){CallsignDatabase d=CallsignDatabase.empty(16);assertEquals(12,d.first.length);assertEquals(0,ByteUtil.u32le(d.first,8));assertEquals(0,d.second.length);}

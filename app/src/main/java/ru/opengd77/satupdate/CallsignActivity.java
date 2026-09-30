@@ -43,9 +43,9 @@ public class CallsignActivity extends Activity {
         label(form,"Поля после позывного",14);String[] names={"Имя","Фамилия","Город","Область / штат","Страна"};fields=new CheckBox[5];
         for(int i=0;i<5;i++){fields[i]=new CheckBox(this);fields[i].setText(names[i]);fields[i].setChecked(getPreferences(0).getBoolean("field"+i,true));form.addView(fields[i]);controls.add(fields[i]);}
         label(form,"Разделитель",14);separator=spinner(form,new String[]{"Пробел","Точка"});separator.setSelection(getPreferences(0).getInt("separator",0));
-        label(form,"Число символов вместе с позывным",14);length=spinner(form,new String[]{"16","20","24","32","40","48"});length.setSelection(getPreferences(0).getInt("length",0));
+        label(form,"Число символов вместе с позывным",14);length=spinner(form,new String[]{"16","20","24","32","40","48"});length.setSelection(Math.max(0,getPreferences(0).getInt("length",CallsignDatabase.LENGTHS.length-1)));
         button(form,"Применить фильтры / обновить предпросмотр",()->apply());
-        label(form,"Кириллица преобразуется в латиницу. Неподдерживаемые знаки заменяются точкой. Ниже показан текст после обрезки до выбранной длины.",14);
+        label(form,"Предпросмотр показывает полные выбранные поля. В рации отображается начало строки до выбранного лимита символов. При 48 символах помещается больше имени и города, но меньше ID.",14);
         summary=label(form,"CSV ещё не загружен. Вместимость при 16 символах: "+CallsignDatabase.capacity(16),15);
         search=new EditText(this);search.setSingleLine(true);search.setHint("Поиск по ID или тексту записи");form.addView(search);controls.add(search);
         button(form,"Найти в подготовленной базе",()->showPreview());
@@ -79,7 +79,7 @@ public class CallsignActivity extends Activity {
     private void load(File file,CallsignDatabase.Options opts,Charset encoding)throws IOException {
         loaded(parse(file,opts,encoding));
     }
-    private void loaded(CallsignDatabase db){runOnUiThread(()->{database=db;setBusy(false);summary.setText("Записей: "+db.entries.size()+" / "+CallsignDatabase.capacity(db.chars)+"\nСтрок в CSV: "+db.sourceRows+"; некорректных: "+db.skipped+"; повторных ID: "+db.duplicates+"\nТекст: "+db.chars+" символов. "+sourceLabel);showPreview();status.setText("База подготовлена. Проверьте предпросмотр перед записью.");});
+    private void loaded(CallsignDatabase db){runOnUiThread(()->{database=db;setBusy(false);summary.setText("Записей: "+db.entries.size()+" / "+CallsignDatabase.capacity(db.chars)+"\nСтрок в CSV: "+db.sourceRows+"; некорректных: "+db.skipped+"; повторных ID: "+db.duplicates+"\nТекст: "+db.chars+" символов. "+sourceLabel);showPreview();});
     }
     private void apply(){try{CallsignDatabase.Options o=options();Charset c=selectedCharset();persistOptions();database=null;setBusy(true);worker.execute(()->{try{load(sourceFile(),o,c);}catch(Exception e){finishTask("Ошибка CSV: "+e.getMessage());}});}catch(Exception e){log(e.getMessage());}}
     private void openCsv(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");startActivityForResult(i,1);}
@@ -92,7 +92,7 @@ public class CallsignActivity extends Activity {
                 try(InputStream in=connection.getInputStream()){copy(in,temp);}
                 // Reject an HTML/error response before replacing a previously usable source.
                 CallsignDatabase db=parse(temp,o,Charset.forName("UTF-8"));
-                replaceSource(temp);sourceLabel="RadioID.net";runOnUiThread(()->{database=db;setBusy(false);summary.setText("RadioID.net: "+db.entries.size()+" записей / "+CallsignDatabase.capacity(db.chars)+"\nСтрок: "+db.sourceRows+"; пропущено: "+db.skipped+"; повторов: "+db.duplicates);showPreview();status.setText("База загружена и подготовлена.");});
+                replaceSource(temp);sourceLabel="RadioID.net";runOnUiThread(()->{database=db;setBusy(false);summary.setText("RadioID.net: "+db.entries.size()+" записей / вместимость "+CallsignDatabase.capacity(db.chars)+"\nСтрок: "+db.sourceRows+"; пропущено: "+db.skipped+"; повторов: "+db.duplicates);showPreview();});
             }catch(Exception e){finishTask("Ошибка загрузки: "+e.getMessage());}finally{if(connection!=null)connection.disconnect();temp.delete();}});
         }catch(Exception e){log(e.getMessage());}
     }
@@ -102,7 +102,7 @@ public class CallsignActivity extends Activity {
     private void copy(InputStream in,File outFile)throws IOException {
         if(in==null)throw new IOException("Файл не открыт");try(FileOutputStream out=new FileOutputStream(outFile)){byte[] b=new byte[16384];int n;long total=0;while((n=in.read(b))!=-1){total+=n;if(total>80L*1024*1024)throw new IOException("CSV больше 80 МБ");out.write(b,0,n);}out.getFD().sync();}
     }
-    private void showPreview(){if(database==null)return;String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);List<String> text=new ArrayList<>();int matches=0;for(CallsignDatabase.Entry e:database.entries){if(query.isEmpty()||Integer.toString(e.id).contains(query)||e.text.toLowerCase(Locale.ROOT).contains(query)){matches++;if(text.size()<200)text.add(e.id+"   "+e.text);}}preview.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,text));status.setText("Найдено: "+matches+". Показано: "+text.size()+". При записи используются все "+database.entries.size()+" записей подготовленной базы.");}
+    private void showPreview(){if(database==null)return;String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);List<String> text=new ArrayList<>();int matches=0;for(CallsignDatabase.Entry e:database.entries){if(query.isEmpty()||Integer.toString(e.id).contains(query)||e.text.toLowerCase(Locale.ROOT).contains(query)){matches++;if(text.size()<200)text.add(e.id+"   "+e.text+(e.encoded.length()<e.text.length()?"  →  "+e.encoded+"…":""));}}preview.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,text));status.setText("Найдено: "+matches+". Показано: "+text.size()+". При записи используются все "+database.entries.size()+" записей подготовленной базы.");}
     private void confirm(boolean clear){
         if(!clear&&database==null)return;
         writeDatabase=clear?CallsignDatabase.empty(CallsignDatabase.LENGTHS[length.getSelectedItemPosition()]):database;
@@ -123,7 +123,7 @@ public class CallsignActivity extends Activity {
             List<CallsignWritePlan.Sector> plan=CallsignWritePlan.prepare(writeDatabase,memory,this::log);
             CallsignWritePlan.execute(plan,memory,s->saveBackup(s,info),this::log);
             protocol.closeProgrammingMode();entered=false;
-            result="База записана и проверена: "+writeDatabase.entries.size()+" записей.";
+            result="База обработана. Проверено секторов: "+plan.size()+".";
             try{protocol.reboot();result+=" Рация перезагружается.";}catch(IOException e){result+=" Перезапустите рацию вручную.";}
         }catch(Exception e){result="Ошибка: "+e.getMessage()+(started[0]?"\nЗапись могла выполниться частично. Резервная копия сохранена. Перезапустите рацию и повторно запишите подготовленную базу.":"\nЗапись базы не выполнялась.");}
         finally{if(entered)try{protocol.closeProgrammingMode();}catch(Exception ignored){}transport.close();}

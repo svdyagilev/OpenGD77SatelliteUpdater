@@ -12,7 +12,10 @@ final class CallsignWritePlan {
     static void checkRadio(long type,long version,long flashId)throws IOException {
         if(type!=5)throw new IOException("Запись базы поддерживается только для MD-9600");
         if(version!=3&&version!=4)throw new IOException("Неподдерживаемая версия Radio Info: "+version);
-        if((flashId&0xffff)!=0x4018)throw new IOException("Не подтверждена FLASH 16 МБ (ID 0x"+Long.toHexString(flashId)+"). Запись отменена.");
+        // RUS firmware v4 reports DEFECA7E as a sentinel where flashId is unavailable.
+        // Reject a real, readable ID for a different capacity; accept that explicit sentinel.
+        if(flashId!=0xdefeca7eL && flashId!=0 && (flashId&0xffff)!=0x4018)
+            throw new IOException("Идентификатор FLASH 0x"+Long.toHexString(flashId)+" не соответствует проверенной памяти MD-9600. Запись отменена.");
     }
     private static boolean allowed(int a){return a%4096==0&&((a>=CallsignDatabase.BASE&&a+4096<=CallsignDatabase.BASE+CallsignDatabase.SIZE0)||(a>=CallsignDatabase.BASE1&&a+4096<=CallsignDatabase.BASE1+CallsignDatabase.SIZE1));}
     static List<Sector> prepare(CallsignDatabase db,Memory memory,Progress log)throws IOException {

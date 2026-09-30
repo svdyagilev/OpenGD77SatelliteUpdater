@@ -25,7 +25,10 @@ Unused bytes in touched sectors, all unused sectors, codeplug, satellites and
 voice prompt areas remain unchanged. Lowercase `Idn` (voice-memory reuse) is
 never generated. Maximum at 16 text characters is 937163 records.
 
-Only radioType 5, Radio Info 3/4 and flashId low16 0x4018 are accepted. Existing
+Only radioType 5 and Radio Info 3/4 are accepted. A reported real flash ID
+must have low16 0x4018; the RUS v4 `0xDEFECA7E` sentinel (or zero) means that
+firmware does not expose flash ID, so writes remain confined to the two
+documented callsign regions. Existing
 satellite/codeplug code retains its original hardware handling. USB Flash uses
 physical addresses and the existing X1/X2/X3 sector protocol.
 
@@ -52,6 +55,9 @@ This is logical removal, not secure erasure of old records.
   https://github.com/hmatuschek/qdmr/blob/master/lib/openuv380_callsigndb.hh
 - Download source (HTTP 200 and CSV header checked on 2026-09-30):
   https://database.radioid.net/static/user.csv
+
+The default text length is 48; the preview shows all selected fields and marks
+any text truncated by the chosen on-radio entry length.
 
 The new module has unit coverage for encoding, record-aligned split, CSV quoting,
 filtering, sorting, duplicate/invalid rows, all length choices, exact preview,

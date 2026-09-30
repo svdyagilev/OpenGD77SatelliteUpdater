@@ -39,7 +39,7 @@ public class CallsignWritePlanTest {
         try{CallsignWritePlan.execute(CallsignWritePlan.prepare(db(2),m,t->{}),m,s->{m.backup=true;},t->{});fail();}catch(IOException e){assertTrue(e.getMessage().contains("read-back"));}
     }
     @Test public void hardwareGatesAndProtectedAddresses()throws Exception {
-        CallsignWritePlan.checkRadio(5,4,0x4018);
+        CallsignWritePlan.checkRadio(5,4,0x4018);CallsignWritePlan.checkRadio(5,4,0xdefeca7eL);CallsignWritePlan.checkRadio(5,4,0);
         for(long[] args:new long[][]{{6,4,0x4018},{5,2,0x4018},{5,4,0x4017}})try{CallsignWritePlan.checkRadio(args[0],args[1],args[2]);fail();}catch(IOException expected){}
         Memory m=new Memory();List<CallsignWritePlan.Sector> plan=CallsignWritePlan.prepare(db(1),m,t->{});plan.add(new CallsignWritePlan.Sector(0xa0000,new byte[4096],new byte[4096]));
         try{CallsignWritePlan.execute(plan,m,s->{fail();},t->{});fail();}catch(IOException expected){}assertTrue(m.writes.isEmpty());

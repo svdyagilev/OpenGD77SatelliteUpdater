@@ -20,7 +20,7 @@ final class CallsignDatabase {
         }
         boolean accepts(String id) {if(region.isEmpty())return true;for(String prefix:region.split("[ ,;]+"))if(id.startsWith(prefix))return true;return false;}
     }
-    static final class Entry {final int id;final String text;Entry(int id,String text){this.id=id;this.text=text;}}
+    static final class Entry {final int id;final String text,encoded;Entry(int id,String text,String encoded){this.id=id;this.text=text;this.encoded=encoded;}}
     final List<Entry> entries;final byte[] first,second;final int chars,recordSize,sourceRows,duplicates,skipped;
     private CallsignDatabase(List<Entry> entries, int chars,int sourceRows,int duplicates,int skipped) {
         this.entries=Collections.unmodifiableList(entries);this.chars=chars;this.recordSize=3+chars*3/4;
@@ -32,7 +32,7 @@ final class CallsignDatabase {
         for(int i=0;i<entries.size();i++) {
             Entry e=entries.get(i);byte[] target=i<n0?first:second;int off=i<n0?HEADER+i*recordSize:(i-n0)*recordSize;
             target[off]=(byte)e.id;target[off+1]=(byte)(e.id>>>8);target[off+2]=(byte)(e.id>>>16);
-            byte[] packed=pack(e.text,chars);System.arraycopy(packed,0,target,off+3,packed.length);
+            byte[] packed=pack(e.encoded,chars);System.arraycopy(packed,0,target,off+3,packed.length);
         }
     }
     static int capacity(int chars) {int record=3+chars*3/4;return (SIZE0-HEADER)/record+SIZE1/record;}
@@ -53,8 +53,8 @@ final class CallsignDatabase {
             if(!options.accepts(Integer.toString(id)))continue;
             StringBuilder text=new StringBuilder(call);
             for(int i=0;i<5;i++)if(options.fields[i]){String value=cell(row,detail[i]);if(!value.isEmpty()&&!value.equalsIgnoreCase("None")&&!value.equalsIgnoreCase("null"))text.append(options.separator).append(value);}
-            String normalized=normalize(text.toString());if(normalized.length()>options.chars)normalized=normalized.substring(0,options.chars);
-            rows.add(new Entry(id,normalized));
+            String display=normalize(text.toString());String encoded=display.length()>options.chars?display.substring(0,options.chars):display;
+            rows.add(new Entry(id,display,encoded));
             if(rows.size()>1200000)throw new IOException("Слишком много записей: сузьте регион");
         }
         rows.sort((a,b)->Integer.compare(a.id,b.id));
