@@ -35,6 +35,66 @@ final class CallsignDatabase {
             byte[] packed=pack(e.encoded,chars);System.arraycopy(packed,0,target,off+3,packed.length);
         }
     }
+    static CallsignDatabase fromRadio(byte[] first,byte[] second)throws IOException {
+        if(first==null||first.length<HEADER)throw new IOException("Заголовок базы позывных не прочитан");
+        if(first[0]!='I'||first[1]!='d'||first[2]!='N'||first[4]!='0'||first[5]!='0'||first[6]!='1'||first[7]!=0)
+            throw new IOException("В FLASH не найден поддерживаемый заголовок IdN001");
+        int recordSize=(first[3]&255)-0x4a;
+        int chars=charsForRecordSize(recordSize);
+        long count=ByteUtil.u32le(first,8);
+        if(count>capacity(chars))throw new IOException("Размер базы повреждён: "+count+" записей");
+        int inFirst=Math.min((int)count,(SIZE0-HEADER)/recordSize);
+        int firstLength=HEADER+inFirst*recordSize;
+        int secondLength=((int)count-inFirst)*recordSize;
+        if(first.length!=firstLength||second==null||second.length!=secondLength)
+            throw new IOException("Неполный или изменившийся образ базы позывных");
+        List<Entry> entries=new ArrayList<>((int)count);int previous=-1;
+        for(int i=0;i<(int)count;i++) {
+            byte[] src=i<inFirst?first:second;int off=i<inFirst?HEADER+i*recordSize:(i-inFirst)*recordSize;
+            int id=(src[off]&255)|((src[off+1]&255)<<8)|((src[off+2]&255)<<16);
+            if(id<=0||id>=0xffffff)throw new IOException("Недопустимый DMR ID в записи "+(i+1));
+            if(id<=previous)throw new IOException("ID в базе не отсортированы или повторяются около записи "+(i+1));
+            previous=id;String text=unpack(src,off+3,chars);entries.add(new Entry(id,text,text));
+        }
+        return new CallsignDatabase(entries,chars,(int)count,0,0);
+    }
+    static int charsForRecordSize(int recordSize)throws IOException {
+        for(int chars:LENGTHS)if(3+chars*3/4==recordSize)return chars;
+        throw new IOException("Неизвестный размер записи базы: "+recordSize);
+    }
+    static Entry manualEntry(String idText,String text,int chars)throws IOException {
+        final int id;
+        try {
+            String value=idText==null?"":idText.trim();
+            if(!value.matches("[0-9]{1,8}"))throw new NumberFormatException();
+            id=Integer.parseInt(value);
+        } catch(NumberFormatException e) {throw new IOException("DMR ID должен содержать от 1 до 8 цифр");}
+        if(id<=0||id>=0xffffff)throw new IOException("DMR ID вне допустимого диапазона");
+        String clean=normalize(text==null?"":text);
+        if(clean.isEmpty())throw new IOException("Текст записи пуст");
+        if(clean.length()>512)throw new IOException("Текст записи слишком длинный");
+        if(charsForRecordSize(3+chars*3/4)!=chars)throw new IOException("Неподдерживаемая длина записи");
+        return new Entry(id,clean,clean.length()>chars?clean.substring(0,chars):clean);
+    }
+    CallsignDatabase withEntry(Integer oldId,Entry replacement)throws IOException {
+        List<Entry> next=new ArrayList<>(entries.size()+1);boolean foundOld=false;
+        for(Entry e:entries) {
+            if(oldId!=null&&e.id==oldId){foundOld=true;continue;}
+            if(e.id==replacement.id)throw new IOException("Такой DMR ID уже есть в базе");
+            next.add(e);
+        }
+        if(oldId!=null&&!foundOld)throw new IOException("Редактируемая запись уже отсутствует");
+        int pos=Collections.binarySearch(next,replacement,(a,b)->Integer.compare(a.id,b.id));
+        next.add(pos<0?-pos-1:pos,replacement);
+        if(next.size()>capacity(chars))throw new IOException("База превышает вместимость при длине "+chars);
+        return new CallsignDatabase(next,chars,sourceRows,duplicates,skipped);
+    }
+    CallsignDatabase withoutEntry(int id)throws IOException {
+        List<Entry> next=new ArrayList<>(entries.size());boolean found=false;
+        for(Entry e:entries)if(e.id==id)found=true;else next.add(e);
+        if(!found)throw new IOException("Запись уже отсутствует");
+        return new CallsignDatabase(next,chars,sourceRows,duplicates,skipped);
+    }
     static int capacity(int chars) {int record=3+chars*3/4;return (SIZE0-HEADER)/record+SIZE1/record;}
     static CallsignDatabase empty(int chars) {new Options("",new boolean[5]," ",chars);return new CallsignDatabase(new ArrayList<>(),chars,0,0,0);}
     static CallsignDatabase read(Reader input,Options options)throws IOException {

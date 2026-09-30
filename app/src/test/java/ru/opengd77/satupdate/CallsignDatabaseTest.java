@@ -45,4 +45,31 @@ public class CallsignDatabaseTest {
         }
     }
     @Test public void explicitClearHasValidZeroCountHeader(){CallsignDatabase d=CallsignDatabase.empty(16);assertEquals(12,d.first.length);assertEquals(0,ByteUtil.u32le(d.first,8));assertEquals(0,d.second.length);}
+    @Test public void radioImageRoundTripsForEverySupportedLength()throws Exception {
+        for(int chars:CallsignDatabase.LENGTHS){
+            CallsignDatabase source=read("ID,CALLSIGN,NAME\n4010001,UN1A,Almaty\n4010002,UN2B,Karaganda\n","",chars);
+            CallsignDatabase decoded=CallsignDatabase.fromRadio(source.first,source.second);
+            assertEquals(chars,decoded.chars);assertEquals(source.entries.size(),decoded.entries.size());
+            assertEquals(source.entries.get(0).id,decoded.entries.get(0).id);
+            assertEquals(source.entries.get(0).encoded,decoded.entries.get(0).encoded);
+            assertArrayEquals(source.first,decoded.first);assertArrayEquals(source.second,decoded.second);
+        }
+    }
+    @Test public void editorAddsEditsAndDeletesSortedEntries()throws Exception {
+        CallsignDatabase d=read("ID,CALLSIGN\n4010002,UN2B\n","",16);
+        d=d.withEntry(null,CallsignDatabase.manualEntry("4010001","UN1A Almaty",16));
+        assertEquals(4010001,d.entries.get(0).id);assertEquals(2,d.entries.size());
+        d=d.withEntry(4010001,CallsignDatabase.manualEntry("4010003","UN3C Karaganda",16));
+        assertEquals(4010002,d.entries.get(0).id);assertEquals(4010003,d.entries.get(1).id);
+        try{d.withEntry(null,CallsignDatabase.manualEntry("4010002","Duplicate",16));fail();}catch(IOException expected){}
+        d=d.withoutEntry(4010002);assertEquals(1,d.entries.size());assertEquals(4010003,d.entries.get(0).id);
+        try{CallsignDatabase.manualEntry("16777215","bad",16);fail();}catch(IOException expected){}
+    }
+    @Test public void radioImageRejectsInvalidHeaderAndCount()throws Exception {
+        CallsignDatabase d=read("ID,CALLSIGN\n4010001,UN1A\n","",16);
+        byte[] damaged=d.first.clone();damaged[0]='X';
+        try{CallsignDatabase.fromRadio(damaged,d.second);fail();}catch(IOException expected){}
+        damaged=d.first.clone();ByteUtil.putU32le(damaged,8,CallsignDatabase.capacity(16)+1L);
+        try{CallsignDatabase.fromRadio(damaged,d.second);fail();}catch(IOException expected){}
+    }
 }
