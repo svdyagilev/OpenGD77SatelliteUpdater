@@ -41,7 +41,7 @@ final class CodeplugEditDialogs {
             fields.put(key,new Field(selected[0],group,()->selected[0]));
             button.setOnClickListener(v->new AlertDialog.Builder(activity).setTitle(title)
                 .setItems(new String[]{"Нет","CTCSS","DCS N — обычный","DCS I — инверсный"},(dialog,kind)->{
-                    if(kind==0){selected[0]="Нет";button.setText(selected[0]);return;}
+                    if(kind==0){selected[0]="нет";button.setText(selected[0]);return;}
                     String[] choices=ToneChoices.values(kind);
                     int checked=Arrays.asList(choices).indexOf(selected[0]);
                     new AlertDialog.Builder(activity).setTitle(kind==1?"CTCSS, Гц":kind==2?"DCS N":"DCS I")
