@@ -7,6 +7,8 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -18,9 +20,22 @@ import java.util.Locale;
 public class CodeplugViewerActivity extends Activity {
     private CodeplugModel model;
     private int activeCategory;
+    private int activeSection;
     private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602;
+    private static final String[] SECTION_NAMES={"Радиостанция","Каналы","Контакты","APRS и спутники"};
+    private static final String[][] CATEGORY_NAMES={
+            {"Обзор","Загрузочный экран","DMR ID и позывной","Настройки рации","Ограничения частот","Сведения о станции","Настройки DTMF"},
+            {"Каналы","Зоны","VFO A/B","Списки сканирования"},
+            {"Контакты DMR","Контакты DTMF","Группы приёма"},
+            {"Настройки APRS","Спутники"}
+    };
+    private static final int[][] CATEGORY_IDS={
+            {0,10,13,15,14,11,9}, {1,3,2,6}, {4,8,5}, {7,12}
+    };
     private byte[] pendingExport;
+    private Spinner sectionSpinner;
     private Spinner categorySpinner;
+    private EditText projectSearch;
     private ListView listView;
     private TextView summaryText;
     private final List<Object> visibleObjects = new ArrayList<>();
@@ -36,9 +51,13 @@ public class CodeplugViewerActivity extends Activity {
         }
         model = CodeplugSession.current;
         summaryText = findViewById(R.id.codeplugSummaryText);
+        sectionSpinner=findViewById(R.id.codeplugSectionSpinner);
         categorySpinner = findViewById(R.id.codeplugCategorySpinner);
+        projectSearch=findViewById(R.id.projectSearchEdit);
         listView = findViewById(R.id.codeplugList);
         findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> returnToMain());
+        findViewById(R.id.callsignDatabaseButton).setOnClickListener(v -> startActivity(new Intent(this,CallsignActivity.class)));
+        findViewById(R.id.projectSearchButton).setOnClickListener(v -> searchProject());
 
         findViewById(R.id.projectMenuButton).setOnClickListener(v -> projectMenu());
         findViewById(R.id.writeCodeplugButton).setOnClickListener(v -> {
@@ -60,17 +79,21 @@ public class CodeplugViewerActivity extends Activity {
         });
         refreshSummary();
 
-        String[] categories = {"Обзор", "Загрузочный экран", "DMR ID и позывной",
-                "Ограничения частот", "Настройки DTMF", "Настройки APRS",
-                "Контакты DMR", "Контакты DTMF", "Списки групп", "Зоны", "Каналы",
-                "VFO A/B", "Настройки рации", "Списки сканирования",
-                "Сведения о станции", "Спутники"};
-        final int[] categoryIds = {0, 10, 13, 14, 9, 7, 4, 8, 5, 3, 1, 2, 15, 6, 11, 12};
+        sectionSpinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,SECTION_NAMES));
         categorySpinner.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_dropdown_item, categories));
+                android.R.layout.simple_spinner_dropdown_item, CATEGORY_NAMES[0]));
+        sectionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent,View view,int position,long id) {
+                activeSection=position;
+                categorySpinner.setAdapter(new ArrayAdapter<>(CodeplugViewerActivity.this,
+                        android.R.layout.simple_spinner_dropdown_item,CATEGORY_NAMES[position]));
+                categorySpinner.setSelection(0);
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
         categorySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                showCategory(categoryIds[position]);
+                showCategory(CATEGORY_IDS[activeSection][position]);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -200,6 +223,55 @@ public class CodeplugViewerActivity extends Activity {
                 break;
         }
         listView.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, rows));
+    }
+
+    private void searchProject() {
+        String query=projectSearch.getText().toString().trim().toLowerCase(Locale.ROOT);
+        if(query.isEmpty()){refreshSummary();showCategory(activeCategory);return;}
+        if(model==null)return;
+        findViewById(R.id.addRecordButton).setVisibility(View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(View.GONE);
+        List<String> rows=new ArrayList<>();visibleObjects.clear();
+        for(CodeplugModel.Channel c:model.channels)searchEntry(rows,c,"Канал",c.name+" "+c.optionalDmrId+" "+c.colorCode+" "+c.timeSlot,query);
+        for(int i=0;i<model.vfos.size();i++)searchEntry(rows,model.vfos.get(i),"VFO "+(i==0?"A":"B"),model.vfos.get(i).name,query);
+        for(CodeplugModel.Zone z:model.zones)searchEntry(rows,z,"Зона",z.channelIndices.toString(),query);
+        for(CodeplugModel.Contact c:model.contacts)searchEntry(rows,c,"Контакт DMR",c.name+" "+c.number+" "+c.typeText(),query);
+        for(CodeplugModel.DtmfContact c:model.dtmfContacts)searchEntry(rows,c,"Контакт DTMF",c.name+" "+c.code,query);
+        for(CodeplugModel.RxGroup g:model.rxGroups)searchEntry(rows,g,"Группа приёма",g.contactIndices.toString(),query);
+        for(CodeplugModel.ScanList s:model.scanLists)searchEntry(rows,s,"Список сканирования",s.channelIndices.toString(),query);
+        for(CodeplugModel.AprsConfig a:model.aprsConfigs)searchEntry(rows,a,"APRS",a.name+" "+a.comment+" "+a.via1+" "+a.via2,query);
+        for(CodeplugModel.Satellite s:model.satellites)searchEntry(rows,s,"Спутник",s.name,query);
+        searchText(rows,"Позывной / имя станции",model.general.radioName,query);
+        searchText(rows,"DMR ID",Long.toString(model.general.dmrId),query);
+        searchText(rows,"Заставка, строка 1",model.boot.line1,query);
+        searchText(rows,"Заставка, строка 2",model.boot.line2,query);
+        listView.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,rows));
+        summaryText.setText("Поиск по всему проекту: «"+projectSearch.getText().toString().trim()+"». Найдено: "+rows.size());
+    }
+
+    private void searchEntry(List<String> rows,Object item,String label,String extra,String query) {
+        String line=oneLine(item);
+        if((label+" "+line+" "+extra).toLowerCase(Locale.ROOT).contains(query)){
+            visibleObjects.add(item);rows.add(label+" • "+line);
+        }
+    }
+
+    private void searchText(List<String> rows,String label,String value,String query) {
+        if(value!=null&&value.toLowerCase(Locale.ROOT).contains(query)){
+            String line=label+": "+value;visibleObjects.add(line);rows.add(line);
+        }
+    }
+
+    private String oneLine(Object item) {
+        if(item instanceof CodeplugModel.Channel)return ((CodeplugModel.Channel)item).oneLine();
+        if(item instanceof CodeplugModel.Zone)return ((CodeplugModel.Zone)item).oneLine();
+        if(item instanceof CodeplugModel.Contact)return ((CodeplugModel.Contact)item).oneLine();
+        if(item instanceof CodeplugModel.DtmfContact)return ((CodeplugModel.DtmfContact)item).oneLine();
+        if(item instanceof CodeplugModel.RxGroup)return ((CodeplugModel.RxGroup)item).oneLine();
+        if(item instanceof CodeplugModel.ScanList)return ((CodeplugModel.ScanList)item).oneLine();
+        if(item instanceof CodeplugModel.AprsConfig)return ((CodeplugModel.AprsConfig)item).oneLine();
+        if(item instanceof CodeplugModel.Satellite)return ((CodeplugModel.Satellite)item).oneLine();
+        return item.toString();
     }
 
     private void showDtmfSettings(List<String> rows) {
@@ -412,12 +484,16 @@ public class CodeplugViewerActivity extends Activity {
         boolean loaded = model != null && CodeplugSession.project != null;
         refreshAddButton();
         listView.setVisibility(loaded ? View.VISIBLE : View.GONE);
+        sectionSpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
         categorySpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
+        projectSearch.setVisibility(loaded ? View.VISIBLE : View.GONE);
+        findViewById(R.id.projectSearchButton).setVisibility(loaded ? View.VISIBLE : View.GONE);
         findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || activeCategory == 15) ? View.VISIBLE : View.GONE);
         if (!loaded) {
             summaryText.setText("Откройте файл через «Проект» или прочитайте радиостанцию с главного экрана.");
             return;
         }
+        findViewById(R.id.addRecordButton).setVisibility(View.GONE);
         String name = model.general.radioName.isEmpty() ? "без имени" : model.general.radioName;
         summaryText.setText(name + " • DMR ID " + model.general.dmrId + "\n" + model.compactSummary()
                 + "\nИзменено байтов: " + CodeplugSession.project.changedBytes()

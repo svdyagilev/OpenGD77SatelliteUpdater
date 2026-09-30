@@ -26,11 +26,30 @@
         <Button android:id="@+id/editGeneralButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Изменить" android:visibility="gone" />
     </LinearLayout>
 
+    <Button android:id="@+id/callsignDatabaseButton" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="База позывных" />
+
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Раздел" android:textStyle="bold" android:layout_marginTop="4dp" />
+
+    <Spinner android:id="@+id/codeplugSectionSpinner" android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
     <Spinner
         android:id="@+id/codeplugCategorySpinner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp" />
+        android:layout_marginTop="4dp" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <EditText android:id="@+id/projectSearchEdit" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_height="wrap_content"
+            android:hint="Поиск по всему проекту" android:singleLine="true"
+            android:inputType="text" />
+        <Button android:id="@+id/projectSearchButton" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="Найти" />
+    </LinearLayout>
 
     <Button android:id="@+id/addRecordButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Добавить" android:visibility="gone" />
 
