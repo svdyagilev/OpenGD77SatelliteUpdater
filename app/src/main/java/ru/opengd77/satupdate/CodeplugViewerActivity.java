@@ -5,12 +5,16 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
-import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
-import android.widget.Spinner;
+import android.widget.BaseExpandableListAdapter;
+import android.widget.ExpandableListView;
+import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -33,8 +37,8 @@ public class CodeplugViewerActivity extends Activity {
             {0,10,13,15,14,11,9}, {1,3,2,6}, {4,8,5}, {7,12}
     };
     private byte[] pendingExport;
-    private Spinner sectionSpinner;
-    private Spinner categorySpinner;
+    private Button navigationButton;
+    private boolean searching;
     private EditText projectSearch;
     private ListView listView;
     private TextView summaryText;
@@ -51,18 +55,18 @@ public class CodeplugViewerActivity extends Activity {
         }
         model = CodeplugSession.current;
         summaryText = findViewById(R.id.codeplugSummaryText);
-        sectionSpinner=findViewById(R.id.codeplugSectionSpinner);
-        categorySpinner = findViewById(R.id.codeplugCategorySpinner);
+        navigationButton=findViewById(R.id.codeplugNavigationButton);
+        navigationButton.setOnClickListener(v -> navigationMenu());
         projectSearch=findViewById(R.id.projectSearchEdit);
         listView = findViewById(R.id.codeplugList);
         findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> returnToMain());
-        findViewById(R.id.callsignDatabaseButton).setOnClickListener(v -> startActivity(new Intent(this,CallsignActivity.class)));
-        findViewById(R.id.projectSearchButton).setOnClickListener(v -> searchProject());
+        findViewById(R.id.projectSearchButton).setOnClickListener(v -> { searchProject(); hideKeyboard(); });
 
-        findViewById(R.id.projectMenuButton).setOnClickListener(v -> projectMenu());
-        findViewById(R.id.writeCodeplugButton).setOnClickListener(v -> {
-            startActivity(new Intent(this, CodeplugWriteActivity.class));
-            finish();
+        findViewById(R.id.editorMenuButton).setOnClickListener(v -> editorMenu());
+        findViewById(R.id.searchToggleButton).setOnClickListener(v -> toggleSearch());
+        projectSearch.setOnEditorActionListener((view, action, event) -> {
+            if (action == EditorInfo.IME_ACTION_SEARCH) { searchProject(); hideKeyboard(); return true; }
+            return false;
         });
         findViewById(R.id.editGeneralButton).setOnClickListener(v -> {
             if (model == null) return;
@@ -79,28 +83,102 @@ public class CodeplugViewerActivity extends Activity {
         });
         refreshSummary();
 
-        sectionSpinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,SECTION_NAMES));
-        categorySpinner.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_dropdown_item, CATEGORY_NAMES[0]));
-        sectionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> parent,View view,int position,long id) {
-                activeSection=position;
-                categorySpinner.setAdapter(new ArrayAdapter<>(CodeplugViewerActivity.this,
-                        android.R.layout.simple_spinner_dropdown_item,CATEGORY_NAMES[position]));
-                categorySpinner.setSelection(0);
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        if (savedInstanceState != null) {
+            activeSection=savedInstanceState.getInt("section",0);
+            activeCategory=savedInstanceState.getInt("category",0);
+            projectSearch.setText(savedInstanceState.getString("query",""));
+            searching=savedInstanceState.getBoolean("searching",false);
+            findViewById(R.id.projectSearchRow).setVisibility(searching?View.VISIBLE:View.GONE);
+            ((Button)findViewById(R.id.searchToggleButton)).setText(searching?"Закрыть":"Поиск");
+        }
+        showCategory(activeCategory);
+        if(searching)searchProject();
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            if(activeCategory==0 && projectSearch.getText().toString().trim().isEmpty()){
+                int[] overviewCategories={1,3,4,5,6,7,8,12};
+                if(position<overviewCategories.length)showCategory(overviewCategories[position]);
+            }else if(position<visibleObjects.size())showDetails(visibleObjects.get(position));
         });
-        categorySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                showCategory(CATEGORY_IDS[activeSection][position]);
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) {}
-        });
-        listView.setOnItemClickListener((parent, view, position, id) -> showDetails(visibleObjects.get(position)));
     }
 
-    @Override public void onBackPressed() { returnToMain(); }
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putInt("section",activeSection);out.putInt("category",activeCategory);
+        out.putString("query",projectSearch.getText().toString());out.putBoolean("searching",searching);
+    }
+
+    @Override public void onBackPressed() {
+        if(searching)toggleSearch();else returnToMain();
+    }
+
+    private void hideKeyboard() {
+        ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(projectSearch.getWindowToken(),0);
+    }
+
+    private void toggleSearch() {
+        searching=!searching;
+        findViewById(R.id.projectSearchRow).setVisibility(searching?View.VISIBLE:View.GONE);
+        ((Button)findViewById(R.id.searchToggleButton)).setText(searching?"Закрыть":"Поиск");
+        if(searching){
+            projectSearch.requestFocus();
+            ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(projectSearch,InputMethodManager.SHOW_IMPLICIT);
+        }else{
+            projectSearch.setText("");hideKeyboard();showCategory(activeCategory);
+        }
+    }
+
+    private void editorMenu() {
+        String[] items={"Проект: открыть, сохранить, отменить","Записать в радиостанцию","База позывных","Сведения о проекте"};
+        new AlertDialog.Builder(this).setTitle("Действия").setItems(items,(dialog,which)->{
+            if(which==0)projectMenu();
+            else if(which==1){
+                if(model==null){problem(new IllegalStateException("Сначала откройте или прочитайте проект"));return;}
+                startActivity(new Intent(this,CodeplugWriteActivity.class));finish();
+            }else if(which==2)startActivity(new Intent(this,CallsignActivity.class));
+            else if(model!=null&&CodeplugSession.project!=null)new AlertDialog.Builder(this).setTitle("Сведения о проекте")
+                    .setMessage(model.general.radioName+" • DMR ID "+model.general.dmrId+"\n"+model.compactSummary()
+                            +"\nИзменено байтов: "+CodeplugSession.project.changedBytes()+"\nПравки автоматически сохраняются на телефоне.")
+                    .setPositiveButton("OK",null).show();
+        }).show();
+    }
+
+    private void navigationMenu() {
+        ExpandableListView sections=new ExpandableListView(this);
+        sections.setAdapter(new BaseExpandableListAdapter(){
+            public int getGroupCount(){return SECTION_NAMES.length;}
+            public int getChildrenCount(int group){return CATEGORY_NAMES[group].length;}
+            public Object getGroup(int group){return SECTION_NAMES[group];}
+            public Object getChild(int group,int child){return CATEGORY_NAMES[group][child];}
+            public long getGroupId(int group){return group;}
+            public long getChildId(int group,int child){return CATEGORY_IDS[group][child];}
+            public boolean hasStableIds(){return true;}
+            private View label(String text,boolean heading,View reusable){
+                TextView row=reusable instanceof TextView?(TextView)reusable:new TextView(CodeplugViewerActivity.this);
+                int inset=(int)(getResources().getDisplayMetrics().density*48);
+                row.setPadding(inset,inset/4,inset/3,inset/4);row.setMinHeight(inset);
+                row.setGravity(android.view.Gravity.CENTER_VERTICAL);row.setTextSize(16);
+                row.setTypeface(null,heading?android.graphics.Typeface.BOLD:android.graphics.Typeface.NORMAL);
+                row.setText(text);return row;
+            }
+            public View getGroupView(int group,boolean expanded,View reusable,ViewGroup parent){return label(SECTION_NAMES[group],true,reusable);}
+            public View getChildView(int group,int child,boolean last,View reusable,ViewGroup parent){
+                return label((CATEGORY_IDS[group][child]==activeCategory?"✓ ":"")+CATEGORY_NAMES[group][child],false,reusable);
+            }
+            public boolean isChildSelectable(int group,int child){return true;}
+        });
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Разделы редактора").setView(sections).setNegativeButton("Закрыть",null).create();
+        sections.expandGroup(activeSection);
+        sections.setOnChildClickListener((parent,view,group,child,id)->{
+            activeSection=group;
+            if(searching)toggleSearch();
+            showCategory(CATEGORY_IDS[group][child]);dialog.dismiss();return true;
+        });
+        dialog.show();
+        ViewGroup.LayoutParams size=sections.getLayoutParams();
+        size.height=(int)Math.min(getResources().getDisplayMetrics().heightPixels*0.55f,
+                getResources().getDisplayMetrics().density*420);
+        sections.setLayoutParams(size);
+    }
 
     private void returnToMain() {
         Intent i = new Intent(this, MainActivity.class);
@@ -130,12 +208,14 @@ public class CodeplugViewerActivity extends Activity {
         android.widget.Button button=findViewById(R.id.addRecordButton);
         CodeplugRecords.Kind kind=creationKind();
         button.setVisibility(model!=null && kind!=null?View.VISIBLE:View.GONE);
-        if(kind!=null){
-            button.setText(kind==CodeplugRecords.Kind.CHANNEL?"Добавить канал":kind==CodeplugRecords.Kind.ZONE?"Добавить зону":kind==CodeplugRecords.Kind.DMR?"Добавить контакт DMR":kind==CodeplugRecords.Kind.DTMF?"Добавить контакт DTMF":kind==CodeplugRecords.Kind.GROUP?"Добавить группу приёма":kind==CodeplugRecords.Kind.SCAN?"Добавить список сканирования":"Добавить APRS");
-        }
+        button.setText("+ Добавить");
     }
+
     private void showCategory(int category) {
         activeCategory = category;
+        for(int section=0;section<CATEGORY_IDS.length;section++)for(int item=0;item<CATEGORY_IDS[section].length;item++)
+            if(CATEGORY_IDS[section][item]==category){activeSection=section;navigationButton.setText(CATEGORY_NAMES[section][item]+" ▾");}
+        refreshSummary();
         refreshAddButton();
         visibleObjects.clear();
         findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10 || category == 9 || category == 14 || category == 15) ? View.VISIBLE : View.GONE);
@@ -246,7 +326,7 @@ public class CodeplugViewerActivity extends Activity {
         searchText(rows,"Заставка, строка 1",model.boot.line1,query);
         searchText(rows,"Заставка, строка 2",model.boot.line2,query);
         listView.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,rows));
-        summaryText.setText("Поиск по всему проекту: «"+projectSearch.getText().toString().trim()+"». Найдено: "+rows.size());
+        summaryText.setText("Найдено: "+rows.size()+" • весь проект");
     }
 
     private void searchEntry(List<String> rows,Object item,String label,String extra,String query) {
@@ -484,20 +564,19 @@ public class CodeplugViewerActivity extends Activity {
         boolean loaded = model != null && CodeplugSession.project != null;
         refreshAddButton();
         listView.setVisibility(loaded ? View.VISIBLE : View.GONE);
-        sectionSpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
-        categorySpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
-        projectSearch.setVisibility(loaded ? View.VISIBLE : View.GONE);
-        findViewById(R.id.projectSearchButton).setVisibility(loaded ? View.VISIBLE : View.GONE);
+        navigationButton.setEnabled(loaded);
+        findViewById(R.id.searchToggleButton).setVisibility(loaded?View.VISIBLE:View.GONE);
+        if(!loaded)findViewById(R.id.projectSearchRow).setVisibility(View.GONE);
         findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || activeCategory == 15) ? View.VISIBLE : View.GONE);
         if (!loaded) {
-            summaryText.setText("Откройте файл через «Проект» или прочитайте радиостанцию с главного экрана.");
+            summaryText.setMaxLines(4);
+            summaryText.setText("Откройте проект через меню ⋮ или прочитайте радиостанцию с главного экрана.");
             return;
         }
-        findViewById(R.id.addRecordButton).setVisibility(View.GONE);
-        String name = model.general.radioName.isEmpty() ? "без имени" : model.general.radioName;
-        summaryText.setText(name + " • DMR ID " + model.general.dmrId + "\n" + model.compactSummary()
-                + "\nИзменено байтов: " + CodeplugSession.project.changedBytes()
-                + " • автосохранение на телефоне\nЗапись выбранных разделов — кнопка «Записать»");
+        summaryText.setMaxLines(1);
+        summaryText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        String name = model.general.radioName.isEmpty() ? "Проект" : model.general.radioName;
+        summaryText.setText(name + " • " + (CodeplugSession.project.changedBytes()>0?"есть правки":"без правок"));
     }
 
     private void commitEdit(CodeplugProject.Change change) throws Exception {
@@ -508,7 +587,7 @@ public class CodeplugViewerActivity extends Activity {
         CodeplugProjectStore.save(this, next);
         CodeplugSession.install(next);
         refreshSummary();
-        showCategory(activeCategory);
+        if(searching)searchProject();else showCategory(activeCategory);
     }
 
     private void problem(Exception e) {
