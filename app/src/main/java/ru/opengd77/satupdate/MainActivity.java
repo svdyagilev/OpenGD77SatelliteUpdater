@@ -154,6 +154,15 @@ public class MainActivity extends Activity {
             log("Ошибка Satellites.txt: " + e.getMessage());
         }
 
+        findViewById(R.id.callsignDatabaseButton).setOnClickListener(v -> {
+            if (radioBusy) return;
+            transport.close();
+            originalAdditional = null;
+            updatePlan = null;
+            updateButtons();
+            startActivity(new Intent(this, CallsignActivity.class));
+        });
+
         findViewById(R.id.editorProjectButton).setOnClickListener(v -> {
             if (radioBusy) return;
             transport.close();

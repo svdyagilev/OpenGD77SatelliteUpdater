@@ -81,6 +81,12 @@
             android:text="Codeplug • редактор и запись"
             android:textStyle="bold" />
 
+        <Button
+            android:id="@+id/callsignDatabaseButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="База позывных DMR" />
+
         <TextView
             android:id="@+id/codeplugSummaryMainText"
             android:layout_width="match_parent"
