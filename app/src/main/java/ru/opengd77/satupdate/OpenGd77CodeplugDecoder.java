@@ -369,13 +369,13 @@ final class OpenGd77CodeplugDecoder {
             if (name.isEmpty()) continue;
             List<Integer> members = new ArrayList<>();
             for (int n = 0; n < 32; n++) {
-                int idx = ByteUtil.u16le(b, off + 0x10 + n * 2);
-                if (idx > 0 && idx <= 1024) members.add(idx);
+                int idx = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x10 + n * 2));
+                if (idx == -1 || (idx > 0 && idx <= 1024)) members.add(idx);
             }
-            int primary = channelRef(ByteUtil.u16le(b, off + 0x50));
-            int secondary = channelRef(ByteUtil.u16le(b, off + 0x52));
-            int revert = channelRef(ByteUtil.u16le(b, off + 0x54));
-            out.add(new CodeplugModel.ScanList(i + 1, name, members, primary, secondary, revert));
+            int primary = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x50));
+            int secondary = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x52));
+            int revert = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x54));
+            out.add(new CodeplugModel.ScanList(i + 1, name, members, primary, secondary, revert, (b[off+86]&255)*25, (b[off+87]&255)*250));
         }
         return out;
     }

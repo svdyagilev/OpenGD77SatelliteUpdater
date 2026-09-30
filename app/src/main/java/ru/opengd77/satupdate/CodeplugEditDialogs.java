@@ -82,9 +82,9 @@ final class CodeplugEditDialogs {
         Form f=new Form(a,"DMR ID и позывной",changes->commit.apply(s->CodeplugEditor.general(s,changes)));
         f.text("name","Позывной / имя (до 8 символов)",g.radioName,false);f.text("id","DMR ID", ""+g.dmrId,true);f.show();
     }
-    static boolean supported(Object o){return o instanceof CodeplugModel.Channel&&((CodeplugModel.Channel)o).index>0
+    static boolean supported(Object o){return o instanceof CodeplugModel.Channel
             ||o instanceof CodeplugModel.Zone||o instanceof CodeplugModel.Contact||o instanceof CodeplugModel.DtmfContact
-            ||o instanceof CodeplugModel.RxGroup||o instanceof CodeplugModel.AprsConfig;}
+            ||o instanceof CodeplugModel.RxGroup||o instanceof CodeplugModel.AprsConfig||o instanceof CodeplugModel.ScanList;}
     static void create(Activity a,CodeplugProject project,CodeplugRecords.Kind kind,Commit commit){
         int index=CodeplugRecords.next(project.working,kind);
         CodeplugSnapshot preview=CodeplugProject.copy(project.working);
@@ -101,8 +101,9 @@ final class CodeplugEditDialogs {
     private static void edit(Activity a,Object o,CodeplugModel m,Commit commit,CodeplugRecords.Kind creating){
         if(o instanceof CodeplugModel.Channel){channel(a,(CodeplugModel.Channel)o,m,commit,creating);return;}
         if(o instanceof CodeplugModel.Zone){zone(a,(CodeplugModel.Zone)o,m,commit,creating);return;}
-        if(o instanceof CodeplugModel.RxGroup){rxGroup(a,(CodeplugModel.RxGroup)o,m,commit);return;}
-        if(o instanceof CodeplugModel.AprsConfig){aprs(a,(CodeplugModel.AprsConfig)o,commit);return;}
+        if(o instanceof CodeplugModel.RxGroup){rxGroup(a,(CodeplugModel.RxGroup)o,m,commit,creating);return;}
+        if(o instanceof CodeplugModel.AprsConfig){aprs(a,(CodeplugModel.AprsConfig)o,commit,creating);return;}
+        if(o instanceof CodeplugModel.ScanList){scan(a,(CodeplugModel.ScanList)o,m,commit,creating);return;}
         boolean dtmf=o instanceof CodeplugModel.DtmfContact;
         int index=dtmf?((CodeplugModel.DtmfContact)o).index:((CodeplugModel.Contact)o).index;
         String name=dtmf?((CodeplugModel.DtmfContact)o).name:((CodeplugModel.Contact)o).name;
@@ -135,9 +136,9 @@ final class CodeplugEditDialogs {
         f.text("line2","Строка 2 (до 16 символов, можно пустую)",b.line2,false);
         f.label("Строки отображаются в режиме «Текст». Изображение заставки здесь не меняется.");f.show();
     }
-    private static void rxGroup(Activity a,CodeplugModel.RxGroup g,CodeplugModel m,Commit commit){
-        Form f=new Form(a,"Группа приёма "+g.index,changes->commit.apply(s->CodeplugEditor.rxGroup(s,g.index,changes)));
-        f.text("name","Имя (до 15 символов)",g.name,false);
+    private static void rxGroup(Activity a,CodeplugModel.RxGroup g,CodeplugModel m,Commit commit,CodeplugRecords.Kind creating){
+        Form f=recordForm(a,"Группа приёма "+g.index,commit,creating,g.index,changes->commit.apply(s->CodeplugEditor.rxGroup(s,g.index,changes)));
+        f.text("name","Имя (до 15 символов)",creating==null?g.name:"",false);
         StringBuilder text=new StringBuilder();for(int id:g.contactIndices){if(text.length()>0)text.append(", ");text.append(id);}
         EditText members=f.text("members","Номера контактов в нужном порядке (до 32)",text.toString(),false);
         Button select=new Button(a);select.setText("Выбрать контакты по имени");f.body.addView(select);
@@ -154,9 +155,9 @@ final class CodeplugEditDialogs {
             }).show();
         });f.show();
     }
-    private static void aprs(Activity a,CodeplugModel.AprsConfig ap,Commit commit){
-        Form f=new Form(a,"APRS "+ap.index,changes->commit.apply(s->CodeplugEditor.aprs(s,ap.index,changes)));
-        f.text("name","Имя (до 8 символов)",ap.name,false);
+    private static void aprs(Activity a,CodeplugModel.AprsConfig ap,Commit commit,CodeplugRecords.Kind creating){
+        Form f=recordForm(a,"APRS "+ap.index,commit,creating,ap.index,changes->commit.apply(s->CodeplugEditor.aprs(s,ap.index,changes)));
+        f.text("name","Имя (до 8 символов)",creating==null?ap.name:"",false);
         f.choice("ssid","SSID отправителя",""+ap.senderSsid,numbers(0,15),numbers(0,15));
         f.text("tx","Частота передачи, МГц (0 — частота канала)",String.format(Locale.US,"%.6f",ap.txHz/1000000.0),false);
         f.choice("baud300","Скорость",(ap.flags&1)!=0?"1":"0",new String[]{"0","1"},new String[]{"1200 бод","300 бод"});
@@ -165,6 +166,8 @@ final class CodeplugEditDialogs {
         f.text("via2","Маршрут 2 (до 6 букв A–Z и цифр)",ap.via2,false);
         f.choice("via2Ssid","SSID маршрута 2",""+ap.via2Ssid,numbers(0,15),numbers(0,15));
         f.text("comment","Комментарий (до 23 символов ASCII)",ap.comment,false);
+        f.text("iconTable","Таблица символов APRS (/, обратная косая черта или оверлей)",Character.toString((char)ap.iconTable),false);
+        f.text("icon","Символ APRS (один знак ASCII)",Character.toString((char)ap.iconIndex),false);
         f.check("fixed","Использовать фиксированные координаты",(ap.flags&2)!=0);
         f.text("latitude","Широта, ° (−90…90)",String.format(Locale.US,"%.4f",ap.latitude),false);
         f.text("longitude","Долгота, ° (−180…180)",String.format(Locale.US,"%.4f",ap.longitude),false);
@@ -172,7 +175,9 @@ final class CodeplugEditDialogs {
         f.show();
     }
     private static void channel(Activity a,CodeplugModel.Channel c,CodeplugModel m,Commit commit,CodeplugRecords.Kind creating){
-        Form f=recordForm(a,"Канал "+c.index,commit,creating,c.index,changes->commit.apply(s->CodeplugEditor.channel(s,c.index,changes)));
+        final int vfo=c.index==0?m.vfos.indexOf(c):-1;
+        Form f=recordForm(a,vfo>=0?"VFO "+(vfo==0?"A":"B"):"Канал "+c.index,commit,creating,c.index,
+            changes->commit.apply(s->{if(vfo>=0)CodeplugLists.vfo(s,vfo,changes);else CodeplugEditor.channel(s,c.index,changes);}));
         f.label("Общие настройки");
         f.text("name","Имя (до 16 символов)",creating==null?c.name:"",false);
         f.mode=f.choice("mode","Режим",c.digital?"1":"0",new String[]{"0","1"},new String[]{"Аналоговый (FM)","Цифровой (DMR)"});
@@ -184,6 +189,9 @@ final class CodeplugEditDialogs {
         f.check("rxOnly","Только приём",c.rxOnly);f.check("beep","Звуки включены",c.beepEnabled);f.check("eco","Экономайзер включён",c.ecoEnabled);
         f.check("vox","VOX",c.vox);f.check("zoneSkip","Пропуск при сканировании зоны",c.zoneSkip);f.check("allSkip","Пропуск при сканировании всех каналов",c.allSkip);
         f.check("fast","Быстрый вызов",c.fastCall);f.check("priority","Приоритетное сканирование",c.priority);
+        f.check("location","Использовать заданные координаты",c.useLocation);
+        f.text("latitude","Широта, °",String.format(Locale.US,"%.4f",c.latitude),false);
+        f.text("longitude","Долгота, °",String.format(Locale.US,"%.4f",c.longitude),false);
         LinearLayout fm=new LinearLayout(a);fm.setOrientation(LinearLayout.VERTICAL);f.body.addView(fm);f.target=fm;f.group="0";
         f.label("Аналоговая связь");f.check("wide","Широкая полоса 25 кГц (иначе 12.5)",c.wide25k);
         f.tone("rxTone","Субтон приёма",c.rxTone);
@@ -225,5 +233,59 @@ final class CodeplugEditDialogs {
                 StringBuilder text=new StringBuilder();for(int id:selected){if(text.length()>0)text.append(", ");text.append(id);}members.setText(text);
             }).show();
         });f.show();
+    }
+
+    static void radio(Activity a,CodeplugModel m,Commit commit){
+        Form f=new Form(a,"Настройки рации",v->commit.apply(s->CodeplugLists.radio(s,v)));
+        f.choice("vox","Чувствительность VOX",""+m.general.voxSense,numbers(1,10),numbers(1,10));f.show();
+    }
+    static void bands(Activity a,CodeplugModel m,Commit commit){
+        Form f=new Form(a,"Границы частот codeplug",v->commit.apply(s->CodeplugLists.bands(s,v)));
+        f.label("Это значения codeplug. Фактические ограничения диапазонов задаёт прошивка.");
+        f.text("uhfMin","Нижняя UHF, целые МГц",""+m.deviceInfo.minUhf,true);
+        f.text("uhfMax","Верхняя UHF, целые МГц",""+m.deviceInfo.maxUhf,true);
+        f.text("vhfMin","Нижняя VHF, целые МГц",""+m.deviceInfo.minVhf,true);
+        f.text("vhfMax","Верхняя VHF, целые МГц",""+m.deviceInfo.maxVhf,true);f.show();
+    }
+    static void dtmfSettings(Activity a,CodeplugModel.DtmfSettings d,Commit commit){
+        Form f=new Form(a,"Настройки DTMF",v->commit.apply(s->CodeplugLists.dtmf(s,v)));
+        f.text("self","Собственный ID (до 8)",d.selfId,false);
+        f.text("kill","Код блокировки (до 16)",d.killCode,false);f.text("wake","Код разблокировки (до 16)",d.wakeCode,false);
+        String[] symbols="0 1 2 3 4 5 6 7 8 9 A B C D * #".split(" ");
+        f.choice("delimiter","Разделитель",""+d.delimiter,numbers(0,15),symbols);
+        f.choice("groupCode","Групповой символ",""+d.groupCode,numbers(0,15),symbols);
+        f.choice("response","Ответ декодера (код CPS)",""+d.decodeResponse,numbers(0,3),numbers(0,3));
+        f.text("reset","Автосброс, с",""+d.autoResetSeconds,true);
+        f.check("killWake","Декодирование блокировки / разблокировки",d.killWakeDecode);
+        f.choice("killType","Тип блокировки (код CPS)",""+d.killType,numbers(0,3),numbers(0,3));
+        f.text("up","Код при нажатии PTT (до 30)",d.pttUp,false);f.text("down","Код при отпускании PTT (до 30)",d.pttDown,false);
+        f.text("responseHold","Удержание ответа, с (шаг 0.1)",String.format(Locale.US,"%.1f",d.responseHoldSeconds),false);
+        f.text("decodeTime","Время декодирования, с (шаг 0.1)",String.format(Locale.US,"%.1f",d.decodeTimeSeconds),false);
+        f.text("firstDelay","Задержка первого символа, мс (шаг 100)",""+d.firstDigitDelayMs,true);
+        f.text("firstDuration","Длительность первого символа, мс (шаг 100)",""+d.firstDigitDurationMs,true);
+        f.text("otherDuration","Длительность * и #, мс (шаг 100)",""+d.otherDurationMs,true);
+        f.choice("rate","Скорость, символов/с",""+d.rate,numbers(1,10),numbers(1,10));
+        f.text("tail","Задержка завершения, мс (шаг 100)",""+d.tailMs,true);
+        f.label("Использование функций декодирования и PTT-ID зависит от прошивки.");f.show();
+    }
+    private static void scan(Activity a,CodeplugModel.ScanList g,CodeplugModel m,Commit commit,CodeplugRecords.Kind creating){
+        Form f=recordForm(a,"Список сканирования "+g.index,commit,creating,g.index,v->commit.apply(s->CodeplugLists.scan(s,g.index,v)));
+        f.text("name","Имя (до 15 символов)",creating==null?g.name:"",false);
+        EditText members=f.text("members","Каналы по порядку (до 32; −1 — текущий)",CodeplugRecords.join(g.channelIndices),false);
+        List<Integer> ids=new ArrayList<>();List<String> names=new ArrayList<>();ids.add(-1);names.add("Текущий канал");
+        for(CodeplugModel.Channel c:m.channels){ids.add(c.index);names.add(c.name);}
+        Button select=new Button(a);select.setText("Выбрать каналы по имени");f.body.addView(select);
+        select.setOnClickListener(view->{
+            List<Integer> chosen;
+            try{chosen=CodeplugLists.members(members.getText().toString(),32,1024,true);}catch(Exception e){new AlertDialog.Builder(a).setMessage(e.getMessage()).setPositiveButton("OK",null).show();return;}
+            String[] labels=new String[ids.size()];boolean[] checked=new boolean[ids.size()];
+            for(int i=0;i<ids.size();i++){labels[i]=ids.get(i)==-1?names.get(i):"#"+ids.get(i)+" · "+names.get(i);checked[i]=chosen.contains(ids.get(i));}
+            new AlertDialog.Builder(a).setTitle("Каналы списка").setMultiChoiceItems(labels,checked,(d,which,on)->{int id=ids.get(which);if(on&&!chosen.contains(id))chosen.add(id);else if(!on)chosen.remove((Integer)id);})
+                .setNegativeButton("Отмена",null).setPositiveButton("Готово",(d,w)->members.setText(CodeplugRecords.join(chosen))).show();
+        });
+        references(f,"primary","Приоритет 1",g.primary,ids,names);references(f,"secondary","Приоритет 2",g.secondary,ids,names);references(f,"revert","Канал ответа",g.revert,ids,names);
+        f.text("hold","Задержка сканирования, мс (шаг 25)",""+g.holdMs,true);
+        f.text("sample","Интервал проверки приоритета, мс (шаг 250)",""+g.sampleMs,true);
+        f.label("Список сохраняется в codeplug. Использование списков сканирования зависит от прошивки; сканирование зон настраивается каналами зоны.");f.show();
     }
 }

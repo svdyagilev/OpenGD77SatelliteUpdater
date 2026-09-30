@@ -115,3 +115,39 @@ All previous sector backup/read-back behavior remains in effect.
 Tests cover empty lists, deleted slots, capacity, channel bank/bitmap boundaries,
 last slots, atomic rejection, round-trip/undo, mode switches before first write,
 selected dependency ordering, stale dependencies and full memory preservation.
+
+
+## 0.7.0 lists, deletion and fixed settings
+
+New sections: scan lists (block 4), DTMF settings (block 2), VOX (block 1 byte 19),
+VFOs (block 7 bytes 0x78..0xe7), band limits (block 0 bytes 0..7).
+Section ownership is per-byte for shared blocks; accepted baselines advance only
+for changed bytes actually written. DMR section also owns quick-key cleanup
+(block 7 words 0x0c..0x1f). Readback/sector backups remain mandatory.
+
+Reference evidence: OpenGD77 codeplug.h and codeplug.c, plus qDMR
+RadioddityCodeplug::ScanListElement and OpenGD77BaseCodeplug::APRSSettingsElement.
+Scan wire references: 0 none, 1 selected, n+1 physical channel n; 32 members,
+three special references, hold time x25 ms and priority sample x250 ms.
+Scan flag byte 15 is preserved on existing records (initialized FF on create).
+RX-group active header is count+1; scan header is 1; APRS magic is ASCII RA.
+Geolocation occupies RUS channel bytes 1a/1c/1d and 1e/1f/24, NOT old scan links.
+
+Deletion restores the original record payload and clears its presence marker;
+for contacts and APRS only first name byte becomes FF. If originally empty,
+create/delete restores the exact original free slot. References are removed
+atomically in a project revision; unknown unrelated bytes remain unchanged.
+Slots can be reused: changing reserved bits in a replacement requires successful
+reconstruction as a canonical new record. New unsupported reserved fields fail.
+
+Integrity checks reject newly dangling references and references to deleted
+existing targets in the effective selected radio image. Preflight additionally
+reads reverse dependencies for deletion; deleting DMR/group/APRS targets requires
+checking live VFOs too. A contact-only deletion cannot leave stale VFO references.
+Legacy dangling references unaffected by an edit are preserved, not silently fixed.
+
+DTMF fields follow struct_codeplugSignalling_DTMF_t. Only documented fields are
+writable: code arrays, bytes 40..43, flag44 bits 5..7, and bytes112..118.
+Reserved bytes stay unchanged. Rate 1..10 digits/s; durations use documented units.
+VOX 1..10. Device band limits are BCD whole MHz; metadata strings remain read-only.
+APRS symbol bytes29..30 are now editable; codeplug magic and reserved bytes remain protected.

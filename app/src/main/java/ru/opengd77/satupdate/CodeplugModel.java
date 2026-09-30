@@ -475,15 +475,17 @@ final class CodeplugModel {
         final int primary;
         final int secondary;
         final int revert;
+        final int holdMs, sampleMs;
 
         ScanList(int index, String name, List<Integer> channelIndices,
-                 int primary, int secondary, int revert) {
+                 int primary, int secondary, int revert, int holdMs, int sampleMs) {
             this.index = index;
             this.name = name;
             this.channelIndices = Collections.unmodifiableList(new ArrayList<>(channelIndices));
             this.primary = primary;
             this.secondary = secondary;
             this.revert = revert;
+            this.holdMs=holdMs;this.sampleMs=sampleMs;
         }
 
         String oneLine() {

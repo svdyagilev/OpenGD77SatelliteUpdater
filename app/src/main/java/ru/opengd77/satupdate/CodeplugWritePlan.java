@@ -5,11 +5,10 @@ import java.util.*;
 
 /** MD-9600 physical FLASH map. Existing field patches plus validated new record allocation. */
 final class CodeplugWritePlan {
-    static final String[] NAMES={"DMR ID и позывной", "Каналы", "Контакты DMR", "Контакты DTMF", "Зоны", "Загрузочный экран", "Группы приёма", "APRS"};
-    static final int[][] BLOCKS={{1},{6,9},{10},{5},{8},{7},{11},{3}};
+    static final String[] NAMES={"DMR ID и позывной", "Каналы", "Контакты DMR", "Контакты DTMF", "Зоны", "Загрузочный экран", "Группы приёма", "APRS", "Списки сканирования", "Настройки DTMF", "Настройки рации", "VFO A/B", "Границы частот"};
+    static final int[][] BLOCKS={{1},{6,9},{10,7},{5},{8},{7},{11},{3},{4},{2},{1},{7},{0}};
     static boolean[] allSections(){boolean[] selection=new boolean[NAMES.length];Arrays.fill(selection,true);return selection;}
     // Boot shares a snapshot block with VFOs. Cached VFO state may change on entry to CPS.
-    private static int checkLength(int block,byte[] data){return block==7?0x48:data.length;}
     static final int[] ADDRESS={0x80,0xe0,0x1400,0x1588,0x1790,0x2f88,0x3780,0x7518,0x8010,0x9b1b0,0xa7620,0xad620,0x20000};
     final CodeplugProject project;
     final boolean[] selected;
@@ -18,131 +17,44 @@ final class CodeplugWritePlan {
     final int[] counts=new int[NAMES.length];
     final Set<Integer> dependencies=new TreeSet<>();
 
-    CodeplugWritePlan(CodeplugProject project,boolean[] selected) {
+    CodeplugWritePlan(CodeplugProject project,boolean[] selection) {
         if(project==null||project.identity==null||project.identity.radioType!=5)
             throw new IllegalArgumentException("Для записи нужен проект, считанный с MD-9600");
-        if(selected.length!=NAMES.length)throw new IllegalArgumentException("Неверный выбор разделов");
-        this.project=project;this.selected=selected.clone();
+        if(selection.length>NAMES.length)throw new IllegalArgumentException("Неверный выбор разделов");
+        this.project=project;this.selected=Arrays.copyOf(selection,NAMES.length);
+        CodeplugIntegrity.masks(project);
         byte[][] a=CodeplugProject.blocks(project.original),b=CodeplugProject.blocks(project.working);
-        byte[][] masks=CodeplugProject.blocks(CodeplugProject.copy(project.original));
-        for(byte[] mask:masks)Arrays.fill(mask,(byte)0);
-        Arrays.fill(masks[1],0,12,(byte)255);
-        CodeplugModel original=OpenGd77CodeplugDecoder.decode(project.original);
-        for(CodeplugModel.Channel c:original.channels){
-            int bank=(c.index-1)/128,slot=(c.index-1)%128;
-            int block=bank==0?6:9,o=(bank==0?0:(bank-1)*0x1c10)+16+slot*56;
-            byte[] m=masks[block];Arrays.fill(m,o,o+0x1a,(byte)255);m[o+0x1b]=(byte)255;
-            Arrays.fill(m,o+0x20,o+0x24,(byte)255);m[o+0x25]=(byte)0xc0;m[o+0x26]=(byte)0xe5;
-            Arrays.fill(m,o+0x27,o+0x2a,(byte)255);Arrays.fill(m,o+0x2b,o+0x30,(byte)255);
-            m[o+0x30]=15;m[o+0x31]=0x40;m[o+0x33]=0x77;m[o+0x36]=(byte)0xf0;m[o+0x37]=(byte)255;
-        }
-        for(CodeplugModel.Contact c:original.contacts){int o=(c.index-1)*24;Arrays.fill(masks[10],o,o+21,(byte)255);masks[10][o+23]=3;}
-        for(CodeplugModel.DtmfContact c:original.dtmfContacts){int o=(c.index-1)*32;Arrays.fill(masks[5],o,o+32,(byte)255);}
-        for(CodeplugModel.Zone z:original.zones){int o=32+(z.index-1)*176;Arrays.fill(masks[8],o,o+176,(byte)255);}
-        masks[7][0]=(byte)255;Arrays.fill(masks[7],0x28,0x48,(byte)255);
-        for(CodeplugModel.RxGroup g:original.rxGroups){
-            masks[11][g.index-1]=(byte)255;
-            int o=0x80+(g.index-1)*0x50;Arrays.fill(masks[11],o,o+0x50,(byte)255);
-        }
-        for(CodeplugModel.AprsConfig ap:original.aprsConfigs){
-            int o=(ap.index-1)*64;
-            Arrays.fill(masks[3],o,o+29,(byte)255); // name, SSID, coordinates, route
-            Arrays.fill(masks[3],o+31,o+59,(byte)255); // comment and binary frequency
-            masks[3][o+61]=7; // preserve other flags, symbol, magic and reserved bytes
-        }
-        CodeplugModel working=project.model();
-        for(CodeplugRecords.Kind kind:CodeplugRecords.Kind.values())for(int id=1;id<=CodeplugRecords.limit(kind);id++){
-            boolean before=CodeplugRecords.occupied(project.original,kind,id),after=CodeplugRecords.occupied(project.working,kind,id);
-            if(before&&!after)throw new IllegalArgumentException("Удаление записей пока не поддерживается");
-            if(before||!after)continue;
-            CodeplugRecords.validateNew(project.working,working,kind,id);
-            int block=CodeplugRecords.block(kind,id),o=CodeplugRecords.offset(kind,id);
-            Arrays.fill(masks[block],o,o+CodeplugRecords.size(kind),(byte)255);
-            if(kind==CodeplugRecords.Kind.CHANNEL||kind==CodeplugRecords.Kind.ZONE)
-                masks[block][CodeplugRecords.marker(kind,id)]|=1<<((id-1)%8);
-        }
-        for(CodeplugModel.RxGroup g:original.rxGroups){
-            boolean found=false;for(CodeplugModel.RxGroup after:working.rxGroups)if(after.index==g.index)found=true;
-            if(!found)throw new IllegalArgumentException("Удаление групп приёма пока не поддерживается");
-            int o=0x80+(g.index-1)*0x50;
-            boolean membersChanged=a[11][g.index-1]!=b[11][g.index-1];
-            for(int j=o+16;j<o+80;j++)membersChanged|=a[11][j]!=b[11][j];
-            if(membersChanged){
-                int count=(b[11][g.index-1]&255)-1;
-                if(count<0||count>32)throw new IllegalArgumentException("Некорректная длина группы приёма");
-                Set<Integer> seen=new HashSet<>();
-                for(int j=0;j<32;j++){
-                    int ref=ByteUtil.u16le(b[11],o+16+2*j);
-                    if(j>=count){if(ref!=0)throw new IllegalArgumentException("Лишние контакты в группе");continue;}
-                    boolean exists=false;for(CodeplugModel.Contact c:working.contacts)if(c.index==ref)exists=true;
-                    if(!exists||!seen.add(ref))throw new IllegalArgumentException("Некорректный контакт группы приёма");
-                }
-            }
-        }
-        for(CodeplugModel.AprsConfig ap:original.aprsConfigs){
-            boolean found=false;for(CodeplugModel.AprsConfig after:working.aprsConfigs)if(after.index==ap.index)found=true;
-            if(!found)throw new IllegalArgumentException("Удаление APRS пока не поддерживается");
-        }
-        // Imported projects are subject to the same address/bit boundaries as editor changes.
-        for(int block=0;block<a.length;block++)for(int i=0;i<a[block].length;i++)
-            if(((a[block][i]^b[block][i])&~masks[block][i]&255)!=0)
-                throw new IllegalArgumentException("Проект содержит изменения вне поддерживаемых полей (блок "+block+"). Перечитайте рацию.");
-        for(int section=0;section<NAMES.length;section++)for(int block:BLOCKS[section]){
-            for(int i=0;i<a[block].length;i++)if(a[block][i]!=b[block][i]){
+        CodeplugSnapshot effective=CodeplugProject.copy(project.original);byte[][] result=CodeplugProject.blocks(effective);
+        for(int section=0;section<NAMES.length;section++)for(int block:BLOCKS[section])
+            for(int i=0;i<a[block].length;i++)if(belongs(section,block,i)&&a[block][i]!=b[block][i]){
                 counts[section]++;
-                if(selected[section]){changes.put(ADDRESS[block]+i,b[block][i]);blocks.add(block);}
+                if(selected[section]){changes.put(ADDRESS[block]+i,b[block][i]);blocks.add(block);result[block][i]=b[block][i];}
             }
-        }
-        validateDependencies(original);
+        CodeplugIntegrity.links(project.original,effective);
+        if(blocks.contains(6)||blocks.contains(9)||selected[11]&&counts[11]>0){dependencies.add(10);dependencies.add(11);dependencies.add(3);}
+        if(blocks.contains(8)||blocks.contains(4)){dependencies.add(6);dependencies.add(9);}
+        if(blocks.contains(11))dependencies.add(10);
+        checkVfos=selected[11]&&counts[11]>0;
+        for(CodeplugRecords.Kind k:new CodeplugRecords.Kind[]{CodeplugRecords.Kind.DMR,CodeplugRecords.Kind.CHANNEL,CodeplugRecords.Kind.GROUP,CodeplugRecords.Kind.APRS})
+            for(int id=1;id<=CodeplugRecords.limit(k);id++)if(CodeplugRecords.occupied(project.original,k,id)&&!CodeplugRecords.occupied(effective,k,id)){
+                if(k==CodeplugRecords.Kind.CHANNEL){dependencies.add(8);dependencies.add(4);}
+                else {dependencies.add(6);dependencies.add(9);dependencies.add(7);checkVfos=true;if(k==CodeplugRecords.Kind.DMR)dependencies.add(11);}
+            }
     }
-    private void validateDependencies(CodeplugModel original){
-        CodeplugSnapshot effective=CodeplugProject.copy(project.original);
-        byte[][] target=CodeplugProject.blocks(effective),source=CodeplugProject.blocks(project.working);
-        for(int b:blocks)System.arraycopy(source[b],0,target[b],0,source[b].length);
-        CodeplugModel after=OpenGd77CodeplugDecoder.decode(effective);
-        if(blocks.contains(6)||blocks.contains(9)){
-            dependencies.add(10);dependencies.add(11);dependencies.add(3);
-            for(CodeplugModel.Channel c:after.channels){
-                CodeplugModel.Channel old=null;for(CodeplugModel.Channel v:original.channels)if(v.index==c.index)old=v;
-                if(c.digital){
-                    if(c.contactIndex!=0&&(old==null||!old.digital||old.contactIndex!=c.contactIndex)&&!has(after.contacts,c.contactIndex))
-                        throw new IllegalArgumentException("Канал #"+c.index+": выберите также «Контакты DMR», содержащие новый контакт");
-                    if(c.rxGroupIndex!=0&&(old==null||!old.digital||old.rxGroupIndex!=c.rxGroupIndex)&&!has(after.rxGroups,c.rxGroupIndex))
-                        throw new IllegalArgumentException("Канал #"+c.index+": группа приёма отсутствует в выбранных данных");
-                }else if(c.aprsConfigIndex!=0&&(old==null||old.digital||old.aprsConfigIndex!=c.aprsConfigIndex)&&!has(after.aprsConfigs,c.aprsConfigIndex))
-                    throw new IllegalArgumentException("Канал #"+c.index+": настройка APRS отсутствует");
-            }
+    private boolean checkVfos;
+    private int checkLength(int block,byte[] data){return block==7&&!checkVfos?0x48:data.length;}
+    static boolean belongs(int section,int block,int i){
+        if(block==1)return section==0?i<12:i==19;
+        if(block==7){
+            if(section==2)return i>=12&&i<32; // DMR quick-key cleanup
+            if(section==5)return i<12||i>=32&&i<0x48;
+            if(section==11)return i>=0x78;
+            return false;
         }
-        if(blocks.contains(8)){
-            dependencies.add(6);dependencies.add(9);
-            for(CodeplugModel.Zone z:after.zones){
-                CodeplugModel.Zone old=null;for(CodeplugModel.Zone v:original.zones)if(v.index==z.index)old=v;
-                if(old!=null&&old.channelIndices.equals(z.channelIndices))continue;
-                for(int id:z.channelIndices)if(!has(after.channels,id))
-                    throw new IllegalArgumentException("Зона #"+z.index+": выберите также «Каналы», содержащие канал #"+id);
-            }
-        }
-        if(blocks.contains(11)){
-            dependencies.add(10);
-            for(CodeplugModel.RxGroup g:after.rxGroups){
-                CodeplugModel.RxGroup old=null;for(CodeplugModel.RxGroup v:original.rxGroups)if(v.index==g.index)old=v;
-                if(old!=null&&old.contactIndices.equals(g.contactIndices))continue;
-                for(int id:g.contactIndices)if(!has(after.contacts,id))
-                    throw new IllegalArgumentException("Группа #"+g.index+": выберите также «Контакты DMR», содержащие новый контакт");
-            }
-        }
-    }
-    private static boolean has(List<?> records,int id){
-        for(Object o:records){
-            if(o instanceof CodeplugModel.Channel&&((CodeplugModel.Channel)o).index==id)return true;
-            if(o instanceof CodeplugModel.Contact&&((CodeplugModel.Contact)o).index==id)return true;
-            if(o instanceof CodeplugModel.RxGroup&&((CodeplugModel.RxGroup)o).index==id)return true;
-            if(o instanceof CodeplugModel.AprsConfig&&((CodeplugModel.AprsConfig)o).index==id)return true;
-        }
-        return false;
+        return true;
     }
     String summary(){StringBuilder s=new StringBuilder();for(int i=0;i<NAMES.length;i++)if(selected[i]&&counts[i]>0)s.append(NAMES[i]).append(": ").append(counts[i]).append(" байт\n");return s.toString();}
-    CodeplugProject completedProject(){return project.acceptWritten(blocks);}
+    CodeplugProject completedProject(){return project.acceptChanges(changes);}
 
     interface Memory {
         byte[] read(int address,int length)throws IOException;

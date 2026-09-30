@@ -68,6 +68,11 @@ final class CodeplugEditor {
                 case "rx":ByteUtil.putU32le(b,o+0x10,bcd(frequency(v)/10));break;
                 case "tx":ByteUtil.putU32le(b,o+0x14,bcd(frequency(v)/10));break;
                 case "mode":b[o+0x18]=(byte)(digital?1:0);break;
+                case "location":flag(b,o+0x26,8,bool(v));break;
+                case "latitude":case "longitude":
+                    int coord=coordinate(v,k.equals("latitude")?90:180);
+                    int[] positions=k.equals("latitude")?new int[]{0x1a,0x1c,0x1d}:new int[]{0x1e,0x1f,0x24};
+                    for(int n=0;n<3;n++)b[o+positions[n]]=(byte)(coord>>(8*n));break;
                 case "power":b[o+0x19]=(byte)number(v,0,10,"Мощность");break;
                 case "tot":long t=number(v,0,495,"Ограничение передачи");if(t%15!=0)throw new IllegalArgumentException("Ограничение передачи: шаг 15 секунд");b[o+0x1b]=(byte)(t/15);break;
                 case "rxOnly":flag(b,o+0x33,4,bool(v));break;
@@ -203,6 +208,10 @@ final class CodeplugEditor {
         for(Map.Entry<String,String> e:fields.entrySet()){
             String k=e.getKey(),v=e.getValue();switch(k){
                 case "name":text(b,o,8,v);break;
+                case "iconTable":
+                    if(!v.matches("[/\\\\A-Z0-9]"))throw new IllegalArgumentException("Таблица APRS: /, обратная косая черта, A–Z или 0–9");
+                    b[o+29]=(byte)v.charAt(0);break;
+                case "icon":if(v.length()!=1||v.charAt(0)<33||v.charAt(0)>126)throw new IllegalArgumentException("Символ APRS: один знак ASCII от ! до ~");b[o+30]=(byte)v.charAt(0);break;
                 case "ssid":b[o+8]=(byte)number(v,0,15,"SSID");break;
                 case "latitude":case "longitude":
                     int c=coordinate(v,k.equals("latitude")?90:180),p=o+(k.equals("latitude")?9:12);

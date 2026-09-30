@@ -48,6 +48,9 @@ public class CodeplugViewerActivity extends Activity {
         findViewById(R.id.editGeneralButton).setOnClickListener(v -> {
             if (model == null) return;
             if (activeCategory == 10) CodeplugEditDialogs.boot(this, model.boot, this::commitEdit);
+            else if(activeCategory==9)CodeplugEditDialogs.dtmfSettings(this,model.dtmfSettings,this::commitEdit);
+            else if(activeCategory==14)CodeplugEditDialogs.bands(this,model,this::commitEdit);
+            else if(activeCategory==15)CodeplugEditDialogs.radio(this,model,this::commitEdit);
             else CodeplugEditDialogs.general(this, model.general, this::commitEdit);
         });
         findViewById(R.id.addRecordButton).setOnClickListener(v -> {
@@ -94,6 +97,9 @@ public class CodeplugViewerActivity extends Activity {
             case 3:return CodeplugRecords.Kind.ZONE;
             case 4:return CodeplugRecords.Kind.DMR;
             case 8:return CodeplugRecords.Kind.DTMF;
+            case 5:return CodeplugRecords.Kind.GROUP;
+            case 6:return CodeplugRecords.Kind.SCAN;
+            case 7:return CodeplugRecords.Kind.APRS;
             default:return null;
         }
     }
@@ -102,14 +108,14 @@ public class CodeplugViewerActivity extends Activity {
         CodeplugRecords.Kind kind=creationKind();
         button.setVisibility(model!=null && kind!=null?View.VISIBLE:View.GONE);
         if(kind!=null){
-            button.setText(kind==CodeplugRecords.Kind.CHANNEL?"Добавить канал":kind==CodeplugRecords.Kind.ZONE?"Добавить зону":kind==CodeplugRecords.Kind.DMR?"Добавить контакт DMR":"Добавить контакт DTMF");
+            button.setText(kind==CodeplugRecords.Kind.CHANNEL?"Добавить канал":kind==CodeplugRecords.Kind.ZONE?"Добавить зону":kind==CodeplugRecords.Kind.DMR?"Добавить контакт DMR":kind==CodeplugRecords.Kind.DTMF?"Добавить контакт DTMF":kind==CodeplugRecords.Kind.GROUP?"Добавить группу приёма":kind==CodeplugRecords.Kind.SCAN?"Добавить список сканирования":"Добавить APRS");
         }
     }
     private void showCategory(int category) {
         activeCategory = category;
         refreshAddButton();
         visibleObjects.clear();
-        findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10) ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10 || category == 9 || category == 14 || category == 15) ? View.VISIBLE : View.GONE);
         if (model == null) return;
         List<String> rows = new ArrayList<>();
         switch (category) {
@@ -283,7 +289,23 @@ public class CodeplugViewerActivity extends Activity {
             dialog.setNeutralButton("Изменить", (d, w) ->
                     CodeplugEditDialogs.edit(this, obj, model, this::commitEdit));
         }
+        if(CodeplugSession.project!=null&&CodeplugRecords.kind(obj)!=null)dialog.setNegativeButton("Удалить",(d,w)->confirmDelete(obj,title));
         dialog.show();
+    }
+    private void confirmDelete(Object obj,String title){
+        try{
+            CodeplugProject current=CodeplugSession.project;
+            CodeplugProject next=current.edit(s->CodeplugRecords.delete(s,current.original,CodeplugRecords.kind(obj),CodeplugRecords.index(obj)));
+            StringBuilder impact=new StringBuilder();
+            byte[][] before=CodeplugProject.blocks(current.working),after=CodeplugProject.blocks(next.working);
+            for(int section=0;section<CodeplugWritePlan.NAMES.length;section++){
+                boolean changed=false;for(int b:CodeplugWritePlan.BLOCKS[section])for(int i=0;i<before[b].length;i++)if(CodeplugWritePlan.belongs(section,b,i))changed|=before[b][i]!=after[b][i];
+                if(changed)impact.append("• ").append(CodeplugWritePlan.NAMES[section]).append('\n');
+            }
+            new AlertDialog.Builder(this).setTitle("Удалить: "+title+"?")
+                .setMessage("Запись будет удалена из проекта. Ссылки на неё будут очищены. Затронутые разделы:\n"+impact+"\nДля изменения радиостанции затем нажмите «Записать». Удаление можно отменить через меню «Проект».")
+                .setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->{try{installProject(next);}catch(Exception e){problem(e);}}).show();
+        }catch(Exception e){problem(e);}
     }
 
     private String channelDetails(CodeplugModel.Channel c) {
@@ -353,6 +375,7 @@ public class CodeplugViewerActivity extends Activity {
     }
 
     private String refChannel(int index) {
+        if(index==-1)return "Текущий канал";
         if (index <= 0) return "—";
         for (CodeplugModel.Channel c : model.channels) {
             if (c.index == index) return "#" + index + " " + c.name;
@@ -390,7 +413,7 @@ public class CodeplugViewerActivity extends Activity {
         refreshAddButton();
         listView.setVisibility(loaded ? View.VISIBLE : View.GONE);
         categorySpinner.setVisibility(loaded ? View.VISIBLE : View.GONE);
-        findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10) ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || activeCategory == 15) ? View.VISIBLE : View.GONE);
         if (!loaded) {
             summaryText.setText("Откройте файл через «Проект» или прочитайте радиостанцию с главного экрана.");
             return;

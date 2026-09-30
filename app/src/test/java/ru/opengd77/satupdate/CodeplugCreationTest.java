@@ -131,7 +131,7 @@ public class CodeplugCreationTest {
                 if(k==0)s.channelBank0[16+56+0x32]=1;
                 if(k==1)s.contacts[24+21]=1;
                 if(k==2)s.channelBank0[0]&=~1;
-                if(k==3)s.zones[0]&=~1;
+                if(k==3)s.zones[31]|=4; // outside 250 usable slots
             });
             try{new CodeplugWritePlan(bad,CodeplugWritePlan.allSections());fail();}catch(IllegalArgumentException expected){}
         }

@@ -40,6 +40,13 @@ final class CodeplugProject {
         for(int block:writtenBlocks)System.arraycopy(b[block],0,a[block],0,a[block].length);
         return new CodeplugProject(baseline,copy(working),identity,new ArrayList<>());
     }
+    CodeplugProject acceptChanges(SortedMap<Integer,Byte> changes) {
+        CodeplugSnapshot baseline=copy(original);byte[][] b=blocks(baseline);
+        for(Map.Entry<Integer,Byte> e:changes.entrySet())for(int i=0;i<b.length;i++){
+            int off=e.getKey()-CodeplugWritePlan.ADDRESS[i];if(off>=0&&off<b[i].length){b[i][off]=e.getValue();break;}
+        }
+        return new CodeplugProject(baseline,copy(working),identity,new ArrayList<>());
+    }
     CodeplugProject undo() {
         if(!canUndo()) return this;
         List<CodeplugSnapshot> history=new ArrayList<>(undo);
