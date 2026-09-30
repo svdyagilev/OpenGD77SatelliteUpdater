@@ -6,12 +6,14 @@
 
 | Назначение | Где находится | Состояние |
 |---|---|---|
-| Последняя кодовая база в `main` | `main`, commit `e0f52f66038dc2c26996c29e2f2fd7245537de38` | Приложение v0.5.4 |
-| Текущий кандидат | `release/v0.8.1-preview`, commit `04239561abf9239f8f92602e8dd522d7b3bff2a8` | v0.8.1; CI tests/build прошли |
+| Код приложения в `main` | `main` (кодовый снимок `e0f52f66038dc2c26996c29e2f2fd7245537de38`; последующие коммиты добавляют только карту версий) | Приложение v0.5.4 |
+| Снимок-кандидат | [`release/v0.8.1-preview`](https://github.com/svdyagilev/OpenGD77SatelliteUpdater/tree/release/v0.8.1-preview), commit `04239561abf9239f8f92602e8dd522d7b3bff2a8` | v0.8.1; CI tests/build прошли |
 | Историческая рабочая ветка | `fix/viewer-v0.5.5` | Сохранена; PR #1 в `main` остаётся draft |
 | Сборка кандидата | [GitHub Actions run #36709535333](https://github.com/svdyagilev/OpenGD77SatelliteUpdater/actions/runs/36709535333) | `OpenGD77CPS-Android-v0.8.1-debug`, SHA-256 `23cb62811e02c0b434b800b9ef0ea86ccf8e04f4f0e0c4c3f3bc085a41785725`; истекает 2026-10-30 |
 
-v0.8.0 добавляет отдельную базу DMR-позывных: импорт CSV, фильтры и предпросмотр, запись в документированные области FLASH и резервирование с проверкой read-back. Описание формата и ограничений: [docs/CALLSIGN_DATABASE.md](docs/CALLSIGN_DATABASE.md).
+v0.8.0 добавляет отдельную базу DMR-позывных: импорт CSV, фильтры и предпросмотр, запись в документированные области FLASH и резервирование с проверкой read-back. Описание формата и ограничений — [документация в preview-ветке](https://github.com/svdyagilev/OpenGD77SatelliteUpdater/blob/release/v0.8.1-preview/docs/CALLSIGN_DATABASE.md).
+
+**v0.8.1 ещё не является опубликованным GitHub Release и не имеет тега.** Пока постоянное сохранение исходников обеспечивает ветка `release/v0.8.1-preview`; текущий APK — временный Actions-артефакт со сроком хранения до 2026-10-30.
 
 **Статус v0.8.1 — preview.** Автоматические тесты и сборка прошли, но физическая проверка USB-чтения/записи базы позывных на MD-9600 не выполнена. До неё `main` остаётся на проверенной ранее линии v0.5.4. Текущая работа и статус проверки описаны в [PR #1](https://github.com/svdyagilev/OpenGD77SatelliteUpdater/pull/1).
 
