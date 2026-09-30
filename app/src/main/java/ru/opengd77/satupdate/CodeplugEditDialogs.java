@@ -166,8 +166,11 @@ final class CodeplugEditDialogs {
         f.text("via2","Маршрут 2 (до 6 букв A–Z и цифр)",ap.via2,false);
         f.choice("via2Ssid","SSID маршрута 2",""+ap.via2Ssid,numbers(0,15),numbers(0,15));
         f.text("comment","Комментарий (до 23 символов ASCII)",ap.comment,false);
-        f.text("iconTable","Таблица символов APRS (/, обратная косая черта или оверлей)",Character.toString((char)ap.iconTable),false);
-        f.text("icon","Символ APRS (один знак ASCII)",Character.toString((char)ap.iconIndex),false);
+        String tables="/\\ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";String[] tableValues=new String[tables.length()];
+        for(int n=0;n<tables.length();n++)tableValues[n]=tables.substring(n,n+1);
+        f.choice("iconTable","Таблица символов APRS / оверлей",Character.toString((char)ap.iconTable),tableValues,tableValues);
+        String[] icons=new String[94];for(int n=0;n<94;n++)icons[n]=Character.toString((char)(33+n));
+        f.choice("icon","Символ APRS",Character.toString((char)ap.iconIndex),icons,icons);
         f.check("fixed","Использовать фиксированные координаты",(ap.flags&2)!=0);
         f.text("latitude","Широта, ° (−90…90)",String.format(Locale.US,"%.4f",ap.latitude),false);
         f.text("longitude","Долгота, ° (−180…180)",String.format(Locale.US,"%.4f",ap.longitude),false);

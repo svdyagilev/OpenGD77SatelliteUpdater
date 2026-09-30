@@ -106,12 +106,12 @@ public class ExtendedEditorTest {
         try{new CodeplugWritePlan(p,select(6)).execute(memory,sectors->memory.backedUp=true,text->{});fail();}catch(IOException expected){}
         assertEquals(0,memory.writes);assertFalse(memory.backedUp);
     }
-    @Test public void unsupportedFieldsAndDeletionRemainBlocked(){
+    @Test public void unsupportedFieldsAndDanglingDeletionRemainBlocked(){
         for(int kind=0;kind<7;kind++){
             final int k=kind;CodeplugProject p=extended().edit(s->{
-                if(k==0)s.bootAndVfos[1]^=1;if(k==1)s.bootAndVfos[0x78]^=1;
+                if(k==0)s.bootAndVfos[1]^=1;if(k==1)s.bootAndVfos[0x78+0x26]^=2;
                 if(k==2)s.aprsConfigs[59]^=1;if(k==3)s.aprsConfigs[61]^=0x80;
-                if(k==4)s.aprsConfigs[62]^=1;if(k==5)s.rxGroups[1]=1;if(k==6)s.rxGroups[0]=0;
+                if(k==4)s.aprsConfigs[62]^=1;if(k==5)s.rxGroups[1]=1;if(k==6){s.rxGroups[0]=0;s.channelBank0[16+43]=1;}
             });
             try{new CodeplugWritePlan(p,CodeplugWritePlan.allSections());fail();}catch(IllegalArgumentException expected){}
         }
