@@ -1,6 +1,5 @@
 package ru.opengd77.satupdate;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
@@ -21,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-public class CodeplugViewerActivity extends Activity {
+public class CodeplugViewerActivity extends ScreenActivity {
     private CodeplugModel model;
     private int activeCategory;
     private int activeSection;

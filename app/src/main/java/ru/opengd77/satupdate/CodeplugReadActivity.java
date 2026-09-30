@@ -1,6 +1,5 @@
 package ru.opengd77.satupdate;
 
-import android.app.Activity;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -17,7 +16,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Isolated read-only codeplug session. It owns its USB connection and never exposes a write path. */
-public class CodeplugReadActivity extends Activity {
+public class CodeplugReadActivity extends ScreenActivity {
     private static final String USB_PERMISSION = "ru.opengd77.satupdate.USB_PERMISSION_CODEPLUG";
 
     private TextView status;

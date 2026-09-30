@@ -1,6 +1,5 @@
 package ru.opengd77.satupdate;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -33,7 +32,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MainActivity extends Activity {
+public class MainActivity extends ScreenActivity {
     private static final String USB_PERMISSION = "ru.opengd77.satupdate.USB_PERMISSION";
     private static final int OPEN_TLE_REQUEST = 1001;
     private static final String CELESTRAK = "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle";

@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.zip.*;
 
 /** Standalone callsign database import/preview/write screen; never edits the codeplug project. */
-public class CallsignActivity extends Activity {
+public class CallsignActivity extends ScreenActivity {
     private static final String PERMISSION="ru.opengd77.satupdate.CALLSIGN_USB";
     private static final String SOURCE="https://database.radioid.net/static/user.csv";
     private final ExecutorService worker=Executors.newSingleThreadExecutor();

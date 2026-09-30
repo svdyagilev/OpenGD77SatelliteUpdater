@@ -10,7 +10,7 @@ import java.io.*;
 import java.util.concurrent.*;
 
 /** Owns the USB connection for one explicit write session. No automatic retries. */
-public class CodeplugWriteActivity extends Activity {
+public class CodeplugWriteActivity extends ScreenActivity {
     private static final String PERMISSION="ru.opengd77.satupdate.USB_PERMISSION_WRITE";
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private UsbManager manager;private UsbCdcSerialTransport transport;private OpenGd77Protocol protocol;
