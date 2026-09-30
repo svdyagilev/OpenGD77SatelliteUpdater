@@ -80,4 +80,5 @@ The module has unit coverage for encoding, record-aligned split, CSV quoting,
 filtering, sorting, duplicate/invalid rows, all length choices, exact preview,
 hardware/region gates, backup failure, stale preflight, no-op, interrupted write,
 header-last publication, read-back failure and preservation of unrelated bytes.
-It has not yet been exercised against physical USB hardware by the developer.
+The user confirmed on a physical MD-9600 that database download, radio read,
+write, and clear all work correctly in v0.8.2.
