@@ -1,7 +1,5 @@
 # OpenGD77 Satellite Updater for Android
 
-> **Текущая карта версий:** см. [VERSIONING.md](VERSIONING.md). Код в `main` — v0.5.4. Кандидат v0.8.1 сохранён в ветке [`release/v0.8.1-preview`](https://github.com/svdyagilev/OpenGD77SatelliteUpdater/tree/release/v0.8.1-preview); он требует физической проверки записи базы позывных на MD-9600.
-
 Первый рабочий исходный прототип Android-приложения для обновления Keps/TLE в TYT MD-9600 с OpenGD77/OpenGD77RUS через USB OTG.
 
 ## Совместимость
