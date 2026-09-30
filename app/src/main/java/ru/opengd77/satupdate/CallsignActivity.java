@@ -87,7 +87,6 @@ public class CallsignActivity extends Activity {
     }
     private void loaded(CallsignDatabase db){runOnUiThread(()->{setRadioSource(false);database=db;setBusy(false);updateSummary();showPreview();});}
     private void updateSummary(){if(database==null)return;String detail=radioSource?"Прочитано непосредственно из MD-9600":"Строк CSV: "+database.sourceRows+"; пропущено: "+database.skipped+"; повторов: "+database.duplicates;summary.setText("Записей: "+database.entries.size()+" / "+CallsignDatabase.capacity(database.chars)+"\n"+detail+"\nДлина записи: "+database.chars+" символов. "+sourceLabel);}
-    }
     private void apply(){try{setRadioSource(false);CallsignDatabase.Options o=options();Charset c=selectedCharset();persistOptions();database=null;setBusy(true);worker.execute(()->{try{load(sourceFile(),o,c);}catch(Exception e){finishTask("Ошибка CSV: "+e.getMessage());}});}catch(Exception e){log(e.getMessage());}}
     private void openCsv(){setRadioSource(false);Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");startActivityForResult(i,1);}
     private void download(){
