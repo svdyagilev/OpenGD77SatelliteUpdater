@@ -113,6 +113,12 @@ final class CodeplugEditor {
         boolean exists=dtmf?hasDtmf(m,index):hasContact(m,index);
         if(!exists)throw new IllegalArgumentException("Контакт не найден");
         byte[] b=dtmf?s.dtmfContacts:s.contacts;int o=(index-1)*(dtmf?32:24);
+        if(!dtmf){
+            int type=fields.containsKey("type")?(int)number(fields.get("type"),0,2,"Тип контакта"):(b[o+20]&255);
+            if(type==2&&(fields.containsKey("type")||fields.containsKey("number"))){
+                fields=new LinkedHashMap<>(fields);fields.put("number","16777215");
+            }
+        }
         for(Map.Entry<String,String> e:fields.entrySet()){
             String v=e.getValue();switch(e.getKey()){
                 case "name":text(b,o,16,v);break;

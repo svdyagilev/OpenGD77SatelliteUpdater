@@ -34,6 +34,22 @@ final class CodeplugEditDialogs {
             spinner.setSelection(vv.indexOf(initial));target.addView(spinner);
             fields.put(key,new Field(initial,group,()->vv.get(spinner.getSelectedItemPosition())));return spinner;
         }
+        void tone(String key,String title,CodeplugModel.Tone initial){
+            label(title);
+            String[] selected={initial.displayText()};
+            Button button=new Button(activity);button.setText(selected[0]);target.addView(button);
+            fields.put(key,new Field(selected[0],group,()->selected[0]));
+            button.setOnClickListener(v->new AlertDialog.Builder(activity).setTitle(title)
+                .setItems(new String[]{"Нет","CTCSS","DCS N — обычный","DCS I — инверсный"},(dialog,kind)->{
+                    if(kind==0){selected[0]="Нет";button.setText(selected[0]);return;}
+                    String[] choices=ToneChoices.values(kind);
+                    int checked=Arrays.asList(choices).indexOf(selected[0]);
+                    new AlertDialog.Builder(activity).setTitle(kind==1?"CTCSS, Гц":kind==2?"DCS N":"DCS I")
+                        .setSingleChoiceItems(choices,checked,(picker,which)->{
+                            selected[0]=choices[which];button.setText(selected[0]);picker.dismiss();
+                        }).setNegativeButton("Отмена",null).show();
+                }).setNegativeButton("Отмена",null).show());
+        }
         void check(String key,String label,boolean initial){
             CheckBox c=new CheckBox(activity);c.setText(label);c.setChecked(initial);target.addView(c);
             fields.put(key,new Field(initial?"1":"0",group,()->c.isChecked()?"1":"0"));
@@ -95,8 +111,20 @@ final class CodeplugEditDialogs {
         f.text("name","Имя (до 16 символов)",creating==null?name:"",false);
         if(dtmf)f.text("code","Код DTMF",creating==null?((CodeplugModel.DtmfContact)o).code:"",false);
         else{CodeplugModel.Contact c=(CodeplugModel.Contact)o;
-            f.text("number","ID / TG", creating==null?""+c.number:"",true);
-            f.choice("type","Тип вызова",""+c.type,numbers(0,2),new String[]{"Групповой","Индивидуальный","Общий"});
+            EditText number=f.text("number","ID / TG", creating==null?""+c.number:"",true);
+            Spinner callType=f.choice("type","Тип вызова",""+c.type,numbers(0,2),new String[]{"Групповой","Индивидуальный","Общий"});
+            String[] previousNumber={c.type==2?"":number.getText().toString()};
+            boolean[] wasAll={c.type==2};
+            if(c.type==2){number.setText("16777215");number.setEnabled(false);}
+            callType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+                public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
+                    boolean all=position==2;
+                    if(all){if(!wasAll[0])previousNumber[0]=number.getText().toString();number.setText("16777215");}
+                    else if(wasAll[0])number.setText(previousNumber[0]);
+                    number.setEnabled(!all);wasAll[0]=all;
+                }
+                public void onNothingSelected(AdapterView<?> parent){}
+            });
             f.choice("ts","Переопределение таймслота",""+c.tsOverride,new String[]{"3","0","2"},new String[]{"Нет","TS1","TS2"});}
         f.show();
     }
@@ -158,8 +186,8 @@ final class CodeplugEditDialogs {
         f.check("fast","Быстрый вызов",c.fastCall);f.check("priority","Приоритетное сканирование",c.priority);
         LinearLayout fm=new LinearLayout(a);fm.setOrientation(LinearLayout.VERTICAL);f.body.addView(fm);f.target=fm;f.group="0";
         f.label("Аналоговая связь");f.check("wide","Широкая полоса 25 кГц (иначе 12.5)",c.wide25k);
-        f.text("rxTone","Субтон приёма: нет / CTCSS 88.5 / DCS 023 N",c.rxTone.displayText(),false);
-        f.text("txTone","Субтон передачи: нет / CTCSS 88.5 / DCS 023 I",c.txTone.displayText(),false);
+        f.tone("rxTone","Субтон приёма",c.rxTone);
+        f.tone("txTone","Субтон передачи",c.txTone);
         String[] sql=new String[22];sql[0]="От общей настройки";sql[1]="Открыт";for(int i=2;i<=20;i++)sql[i]=((i-1)*5)+"%";sql[21]="Закрыт";
         f.choice("sql","Шумоподавитель",""+(c.squelchOverride?c.squelchLevel:0),numbers(0,21),sql);
         List<Integer> ids=new ArrayList<>();List<String> names=new ArrayList<>();for(CodeplugModel.AprsConfig ap:m.aprsConfigs){ids.add(ap.index);names.add(ap.name);}references(f,"aprs","APRS",c.aprsConfigIndex,ids,names);
