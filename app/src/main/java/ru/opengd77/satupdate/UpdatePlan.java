@@ -12,6 +12,7 @@ final class UpdatePlan {
     final byte[] beforeImage;
     final byte[] afterImage;
     final AdditionalSettingsImage.Tlv satelliteTlv;
+    final boolean createsSatelliteBank;
     final int currentSatelliteCount;
     final int newSatelliteCount;
     final int changedBytes;
@@ -22,6 +23,7 @@ final class UpdatePlan {
     private UpdatePlan(byte[] beforeImage,
                        byte[] afterImage,
                        AdditionalSettingsImage.Tlv satelliteTlv,
+                       boolean createsSatelliteBank,
                        int currentSatelliteCount,
                        int newSatelliteCount,
                        int changedBytes,
@@ -31,6 +33,7 @@ final class UpdatePlan {
         this.beforeImage = beforeImage;
         this.afterImage = afterImage;
         this.satelliteTlv = satelliteTlv;
+        this.createsSatelliteBank = createsSatelliteBank;
         this.currentSatelliteCount = currentSatelliteCount;
         this.newSatelliteCount = newSatelliteCount;
         this.changedBytes = changedBytes;
@@ -50,7 +53,7 @@ final class UpdatePlan {
         byte[] before = Arrays.copyOf(currentImage, currentImage.length);
         AdditionalSettingsImage beforeParsed = new AdditionalSettingsImage(before);
         AdditionalSettingsImage.Tlv sat = beforeParsed.findTlv(AdditionalSettingsImage.SATELLITE_TLV_ID);
-        if (sat == null) throw new IllegalStateException("Satellite TLV ID 3 not found");
+        if (sat == null) return buildInitialBank(before, candidateSatellitePayload);
         if (sat.payloadLength != OpenGd77SatelliteEncoder.SATELLITE_PAYLOAD_SIZE) {
             throw new IllegalStateException("Unexpected Satellite TLV length 0x" + Integer.toHexString(sat.payloadLength));
         }
@@ -134,8 +137,49 @@ final class UpdatePlan {
             }
         }
 
-        return new UpdatePlan(before, after, sat, currentCount, newCount, changedBytes,
+        return new UpdatePlan(before, after, sat, false, currentCount, newCount, changedBytes,
                 changedRecords, skippedOlder, changedSectors);
+    }
+
+    private static UpdatePlan buildInitialBank(byte[] before, byte[] payload) {
+        List<String> names = new ArrayList<>();
+        boolean emptySeen = false;
+        for (int i = 0; i < OpenGd77SatelliteEncoder.MAX_SATELLITES; i++) {
+            int off = i * OpenGd77SatelliteEncoder.RECORD_SIZE;
+            String name = recordName(payload, off);
+            if (name.isEmpty()) {
+                emptySeen = true;
+                for (int j = off; j < off + OpenGd77SatelliteEncoder.RECORD_SIZE; j++)
+                    if (payload[j] != 0) throw new IllegalArgumentException("Invalid empty satellite record");
+                continue;
+            }
+            if (emptySeen || names.contains(name)
+                    || SatelliteBankInspector.decodeEpochMillis(payload, off + ORBIT_OFFSET) == Long.MIN_VALUE)
+                throw new IllegalArgumentException("Invalid initial satellite bank");
+            for (int j = off; j < off + 8; j++)
+                if (payload[j] != 0 && ((payload[j] & 0xff) < 32 || (payload[j] & 0xff) > 126))
+                    throw new IllegalArgumentException("Invalid satellite name");
+            names.add(name);
+        }
+        if (names.isEmpty()) throw new IllegalArgumentException("Нет пригодных TLE для создания списка спутников");
+        for (int i = OpenGd77SatelliteEncoder.MAX_SATELLITES * OpenGd77SatelliteEncoder.RECORD_SIZE;
+                i < payload.length; i++)
+            if (payload[i] != 0) throw new IllegalArgumentException("Invalid satellite tail");
+        AdditionalSettingsImage image = new AdditionalSettingsImage(before);
+        AdditionalSettingsImage.Tlv sat = image.createSatellitePayload(payload);
+        byte[] after = image.bytes();
+        int changed = 0;
+        List<Integer> sectors = new ArrayList<>();
+        for (int i = 0; i < before.length; i++) {
+            if (before[i] == after[i]) continue;
+            if (i < sat.headerOffset || i >= sat.payloadOffset + sat.payloadLength)
+                throw new IllegalStateException("Initial satellite write escaped its block");
+            changed++;
+            int sector = i / AdditionalSettingsImage.SECTOR_SIZE;
+            if (!sectors.contains(sector)) sectors.add(sector);
+        }
+        return new UpdatePlan(before, after, sat, true, 0, names.size(), changed,
+                names, new ArrayList<>(), sectors);
     }
 
     int satelliteAbsoluteHeaderAddress() {

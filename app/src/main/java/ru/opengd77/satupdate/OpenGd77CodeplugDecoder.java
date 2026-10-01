@@ -29,7 +29,11 @@ final class OpenGd77CodeplugDecoder {
     private OpenGd77CodeplugDecoder() {}
 
     static CodeplugModel decode(CodeplugSnapshot raw) {
-        CodeplugModel.DeviceInfo deviceInfo = decodeDeviceInfo(raw.deviceInfo);
+        return decode(raw, null);
+    }
+
+    static CodeplugModel decode(CodeplugSnapshot raw, RadioDriver.Identity identity) {
+        CodeplugModel.DeviceInfo deviceInfo = decodeDeviceInfo(raw.deviceInfo, identity);
         CodeplugModel.General general = decodeGeneral(raw.generalSettings);
         CodeplugModel.BootInfo boot = decodeBoot(raw.bootAndVfos);
         CodeplugModel.DtmfSettings dtmfSettings = decodeDtmfSettings(raw.dtmfSettings);
@@ -47,16 +51,31 @@ final class OpenGd77CodeplugDecoder {
                 raw.totalBytes());
     }
 
-    private static CodeplugModel.DeviceInfo decodeDeviceInfo(byte[] b) {
+    static CodeplugModel.DeviceInfo decodeDeviceInfo(byte[] b, RadioDriver.Identity identity) {
         if (b.length < 0x60) {
-            return new CodeplugModel.DeviceInfo(0, 0, 0, 0, "", "", "", "", "", "");
+            return new CodeplugModel.DeviceInfo(-1, -1, -1, -1, "", "", "", "", "", "", identity);
         }
         return new CodeplugModel.DeviceInfo(
-                ByteUtil.u16le(b, 0), ByteUtil.u16le(b, 2),
-                ByteUtil.u16le(b, 4), ByteUtil.u16le(b, 6),
+                bandLimitMhz(b, 0), bandLimitMhz(b, 2),
+                bandLimitMhz(b, 4), bandLimitMhz(b, 6),
                 codeplugText(b, 0x10, 8), codeplugText(b, 0x18, 16),
                 codeplugText(b, 0x28, 8), codeplugText(b, 0x30, 8),
-                codeplugText(b, 0x38, 8), codeplugText(b, 0x40, 24));
+                codeplugText(b, 0x38, 8), codeplugText(b, 0x40, 24), identity);
+    }
+
+    /** CPS DeviceInfo.MinFreq/MaxFreq encode whole MHz as a BCD ushort, not binary. */
+    static int bandLimitMhz(byte[] b, int offset) {
+        int raw = ByteUtil.u16le(b, offset);
+        if (raw == 0 || raw == 0xffff) return -1;
+        int mhz = 0;
+        int multiplier = 1;
+        for (int i = 0; i < 4; i++) {
+            int digit = (raw >>> (i * 4)) & 15;
+            if (digit > 9) return -1;
+            mhz += digit * multiplier;
+            multiplier *= 10;
+        }
+        return mhz;
     }
 
     private static CodeplugModel.General decodeGeneral(byte[] b) {
@@ -350,13 +369,13 @@ final class OpenGd77CodeplugDecoder {
             if (name.isEmpty()) continue;
             List<Integer> members = new ArrayList<>();
             for (int n = 0; n < 32; n++) {
-                int idx = ByteUtil.u16le(b, off + 0x10 + n * 2);
-                if (idx > 0 && idx <= 1024) members.add(idx);
+                int idx = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x10 + n * 2));
+                if (idx == -1 || (idx > 0 && idx <= 1024)) members.add(idx);
             }
-            int primary = channelRef(ByteUtil.u16le(b, off + 0x50));
-            int secondary = channelRef(ByteUtil.u16le(b, off + 0x52));
-            int revert = channelRef(ByteUtil.u16le(b, off + 0x54));
-            out.add(new CodeplugModel.ScanList(i + 1, name, members, primary, secondary, revert));
+            int primary = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x50));
+            int secondary = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x52));
+            int revert = CodeplugLists.scanDecode(ByteUtil.u16le(b, off + 0x54));
+            out.add(new CodeplugModel.ScanList(i + 1, name, members, primary, secondary, revert, (b[off+86]&255)*25, (b[off+87]&255)*250));
         }
         return out;
     }

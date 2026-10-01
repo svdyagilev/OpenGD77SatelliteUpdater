@@ -15,7 +15,9 @@ final class OpenGd77Protocol {
         final long structVersion;
         final long radioType;
         final String fwRevision;
-        FirmwareInfo(long v, long type, String rev) { structVersion = v; radioType = type; fwRevision = rev; }
+        final long flashId;
+        final int features;
+        FirmwareInfo(long v, long type, String rev, long flashId, int features) { structVersion = v; radioType = type; fwRevision = rev; this.flashId=flashId; this.features=features; }
     }
 
     FirmwareInfo readFirmwareInfo() throws IOException {
@@ -23,7 +25,7 @@ final class OpenGd77Protocol {
         long ver = ByteUtil.u32le(data, 0);
         long type = ByteUtil.u32le(data, 4);
         String rev = asciiZ(data, 8, 16);
-        return new FirmwareInfo(ver, type, rev);
+        return new FirmwareInfo(ver, type, rev, ByteUtil.u32le(data,40), (data[44]&255)|((data[45]&255)<<8));
     }
 
     byte[] readFlash(int address, int length) throws IOException {

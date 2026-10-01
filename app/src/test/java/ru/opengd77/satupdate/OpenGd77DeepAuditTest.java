@@ -9,10 +9,10 @@ import static org.junit.Assert.*;
 public class OpenGd77DeepAuditTest {
     @Test public void decodesExtendedChannelAndAuxiliaryBlocks() {
         byte[] device = new byte[0x60];
-        ByteUtil.putU16le(device, 0, 4000);
-        ByteUtil.putU16le(device, 2, 4800);
-        ByteUtil.putU16le(device, 4, 1360);
-        ByteUtil.putU16le(device, 6, 1740);
+        ByteUtil.putU16le(device, 0, 0x0400);
+        ByteUtil.putU16le(device, 2, 0x0480);
+        ByteUtil.putU16le(device, 4, 0x0136);
+        ByteUtil.putU16le(device, 6, 0x0174);
         putText(device, 0x10, "MD9600", 8);
         putText(device, 0x18, "SN123", 16);
         putText(device, 0x28, "CPS1", 8);
@@ -137,7 +137,7 @@ public class OpenGd77DeepAuditTest {
         assertEquals(10, c.squelchLevel);
         assertEquals("45%", c.squelchText());
         assertEquals(4, c.stepIndex);
-        assertEquals("12.5 kHz", c.stepText());
+        assertEquals("12.5 кГц", c.stepText());
         assertEquals(1, c.taTxTs1);
         assertEquals(2, c.taTxTs2);
 

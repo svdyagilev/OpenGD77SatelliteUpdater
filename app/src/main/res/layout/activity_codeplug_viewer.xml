@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Codeplug Viewer"
+        android:text="Редактор codeplug"
         android:textSize="22sp"
         android:textStyle="bold" />
 
@@ -20,11 +20,19 @@
         android:text="Только чтение"
         android:textSize="14sp" />
 
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <Button android:id="@+id/writeCodeplugButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Записать" />
+        <Button android:id="@+id/projectMenuButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Проект" />
+        <Button android:id="@+id/editGeneralButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Изменить" android:visibility="gone" />
+    </LinearLayout>
+
     <Spinner
         android:id="@+id/codeplugCategorySpinner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp" />
+
+    <Button android:id="@+id/addRecordButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Добавить" android:visibility="gone" />
 
     <ListView
         android:id="@+id/codeplugList"

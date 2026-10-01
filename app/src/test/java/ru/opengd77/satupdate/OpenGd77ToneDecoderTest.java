@@ -15,11 +15,11 @@ public class OpenGd77ToneDecoderTest {
         CodeplugModel.Tone t885 = OpenGd77CodeplugDecoder.decodeTone(0x0885);
         assertEquals(CodeplugModel.Tone.Type.CTCSS, t885.type);
         assertEquals(885, t885.value);
-        assertEquals("CTCSS 88.5 Hz", t885.displayText());
+        assertEquals("CTCSS 88.5 Гц", t885.displayText());
 
         CodeplugModel.Tone t1230 = OpenGd77CodeplugDecoder.decodeTone(0x1230);
         assertEquals(1230, t1230.value);
-        assertEquals("CTCSS 123.0 Hz", t1230.displayText());
+        assertEquals("CTCSS 123.0 Гц", t1230.displayText());
     }
 
     @Test public void decodesDcsNormalAndInverted() {

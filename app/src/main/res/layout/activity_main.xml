@@ -78,8 +78,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Codeplug • v0.5 read-only"
+            android:text="Codeplug • редактор и запись"
             android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/callsignDatabaseButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="База позывных DMR" />
 
         <TextView
             android:id="@+id/codeplugSummaryMainText"
@@ -87,13 +93,15 @@
             android:layout_height="wrap_content"
             android:paddingTop="6dp"
             android:paddingBottom="8dp"
-            android:text="Channels, Zones, DMR Contacts, RX Groups и Scan Lists. Полная запись codeplug отключена." />
+            android:text="Чтение, редактирование проекта и запись выбранных разделов в MD-9600." />
 
         <ru.opengd77.satupdate.CodeplugReadButton
             android:id="@+id/readCodeplugButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Прочитать и открыть codeplug" />
+        <Button android:id="@+id/editorProjectButton" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="Открыть редактор / проект" />
 
         <Button
             android:id="@+id/advancedToggleButton"
