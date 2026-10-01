@@ -8,9 +8,6 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
-import android.widget.BaseExpandableListAdapter;
-import android.widget.ExpandableListView;
-import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.content.Context;
@@ -23,18 +20,7 @@ import java.util.Locale;
 public class CodeplugViewerActivity extends ScreenActivity {
     private CodeplugModel model;
     private int activeCategory;
-    private int activeSection;
     private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602;
-    private static final String[] SECTION_NAMES={"Радиостанция","Каналы","Контакты","APRS и спутники"};
-    private static final String[][] CATEGORY_NAMES={
-            {"Обзор","Загрузочный экран","DMR ID и позывной","Настройки рации","Ограничения частот","Сведения о станции","Настройки DTMF"},
-            {"Каналы","Зоны","VFO A/B","Списки сканирования"},
-            {"Контакты DMR","Контакты DTMF","Группы приёма"},
-            {"Настройки APRS","Спутники"}
-    };
-    private static final int[][] CATEGORY_IDS={
-            {0,10,13,15,14,11,9}, {1,3,2,6}, {4,8,5}, {7,12}
-    };
     private byte[] pendingExport;
     private Button navigationButton;
     private boolean searching;
@@ -58,7 +44,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
         navigationButton.setOnClickListener(v -> navigationMenu());
         projectSearch=findViewById(R.id.projectSearchEdit);
         listView = findViewById(R.id.codeplugList);
-        findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> returnToMain());
+        findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> onBackPressed());
         findViewById(R.id.projectSearchButton).setOnClickListener(v -> { searchProject(); hideKeyboard(); });
 
         findViewById(R.id.editorMenuButton).setOnClickListener(v -> editorMenu());
@@ -72,7 +58,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
             if (activeCategory == 10) CodeplugEditDialogs.boot(this, model.boot, this::commitEdit);
             else if(activeCategory==9)CodeplugEditDialogs.dtmfSettings(this,model.dtmfSettings,this::commitEdit);
             else if(activeCategory==14)CodeplugEditDialogs.bands(this,model,this::commitEdit);
-            else if(activeCategory==15)CodeplugEditDialogs.radio(this,model,this::commitEdit);
+            else if(activeCategory==16)CodeplugEditDialogs.radio(this,model,this::commitEdit);
             else CodeplugEditDialogs.general(this, model.general, this::commitEdit);
         });
         findViewById(R.id.addRecordButton).setOnClickListener(v -> {
@@ -83,7 +69,6 @@ public class CodeplugViewerActivity extends ScreenActivity {
         refreshSummary();
 
         if (savedInstanceState != null) {
-            activeSection=savedInstanceState.getInt("section",0);
             activeCategory=savedInstanceState.getInt("category",0);
             projectSearch.setText(savedInstanceState.getString("query",""));
             searching=savedInstanceState.getBoolean("searching",false);
@@ -93,21 +78,23 @@ public class CodeplugViewerActivity extends ScreenActivity {
         showCategory(activeCategory);
         if(searching)searchProject();
         listView.setOnItemClickListener((parent, view, position, id) -> {
-            if(activeCategory==0 && projectSearch.getText().toString().trim().isEmpty()){
-                int[] overviewCategories={1,3,4,5,6,7,8,12};
-                if(position<overviewCategories.length)showCategory(overviewCategories[position]);
-            }else if(position<visibleObjects.size())showDetails(visibleObjects.get(position));
+            if(position>=visibleObjects.size())return;
+            Object item=visibleObjects.get(position);
+            if(item instanceof CodeplugNavigation.Link)showCategory(((CodeplugNavigation.Link)item).page);
+            else showDetails(item);
         });
     }
 
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
-        out.putInt("section",activeSection);out.putInt("category",activeCategory);
+        out.putInt("category",activeCategory);
         out.putString("query",projectSearch.getText().toString());out.putBoolean("searching",searching);
     }
 
     @Override public void onBackPressed() {
-        if(searching)toggleSearch();else returnToMain();
+        if(searching){toggleSearch();return;}
+        int parent=CodeplugNavigation.parent(activeCategory);
+        if(parent<0)returnToMain();else showCategory(parent);
     }
 
     private void hideKeyboard() {
@@ -142,41 +129,25 @@ public class CodeplugViewerActivity extends ScreenActivity {
     }
 
     private void navigationMenu() {
-        ExpandableListView sections=new ExpandableListView(this);
-        sections.setAdapter(new BaseExpandableListAdapter(){
-            public int getGroupCount(){return SECTION_NAMES.length;}
-            public int getChildrenCount(int group){return CATEGORY_NAMES[group].length;}
-            public Object getGroup(int group){return SECTION_NAMES[group];}
-            public Object getChild(int group,int child){return CATEGORY_NAMES[group][child];}
-            public long getGroupId(int group){return group;}
-            public long getChildId(int group,int child){return CATEGORY_IDS[group][child];}
-            public boolean hasStableIds(){return true;}
-            private View label(String text,boolean heading,View reusable){
-                TextView row=reusable instanceof TextView?(TextView)reusable:new TextView(CodeplugViewerActivity.this);
-                int inset=(int)(getResources().getDisplayMetrics().density*48);
-                row.setPadding(inset,inset/4,inset/3,inset/4);row.setMinHeight(inset);
-                row.setGravity(android.view.Gravity.CENTER_VERTICAL);row.setTextSize(16);
-                row.setTypeface(null,heading?android.graphics.Typeface.BOLD:android.graphics.Typeface.NORMAL);
-                row.setText(text);return row;
-            }
-            public View getGroupView(int group,boolean expanded,View reusable,ViewGroup parent){return label(SECTION_NAMES[group],true,reusable);}
-            public View getChildView(int group,int child,boolean last,View reusable,ViewGroup parent){
-                return label((CATEGORY_IDS[group][child]==activeCategory?"✓ ":"")+CATEGORY_NAMES[group][child],false,reusable);
-            }
-            public boolean isChildSelectable(int group,int child){return true;}
-        });
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Разделы редактора").setView(sections).setNegativeButton("Закрыть",null).create();
-        sections.expandGroup(activeSection);
-        sections.setOnChildClickListener((parent,view,group,child,id)->{
-            activeSection=group;
+        int[] pages={0,100,101,102,103};
+        String[] names=new String[pages.length];
+        for(int i=0;i<pages.length;i++)names[i]=CodeplugNavigation.title(pages[i]);
+        new AlertDialog.Builder(this).setTitle("Обзор и разделы").setItems(names,(dialog,which)->{
             if(searching)toggleSearch();
-            showCategory(CATEGORY_IDS[group][child]);dialog.dismiss();return true;
-        });
-        dialog.show();
-        ViewGroup.LayoutParams size=sections.getLayoutParams();
-        size.height=(int)Math.min(getResources().getDisplayMetrics().heightPixels*0.55f,
-                getResources().getDisplayMetrics().density*420);
-        sections.setLayoutParams(size);
+            showCategory(pages[which]);
+        }).setNegativeButton("Закрыть",null).show();
+    }
+
+    private String sectionDetail(int page) {
+        switch(page){
+            case 100:return "Позывной, параметры рации, загрузочный экран";
+            case 101:return model.channels.size()+" каналов • "+model.zones.size()+" зон";
+            case 102:return model.contacts.size()+" DMR • "+model.dtmfContacts.size()+" DTMF";
+            case 103:return model.aprsConfigs.size()+" APRS • "+model.satellites.size()+" спутников";
+            case 16:return "Чувствительность VOX: "+model.general.voxSense;
+            case 14:return model.deviceInfo.vhfRangeText()+" • "+model.deviceInfo.uhfRangeText();
+            default:return "";
+        }
     }
 
     private void returnToMain() {
@@ -212,25 +183,24 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void showCategory(int category) {
         activeCategory = category;
-        for(int section=0;section<CATEGORY_IDS.length;section++)for(int item=0;item<CATEGORY_IDS[section].length;item++)
-            if(CATEGORY_IDS[section][item]==category){activeSection=section;navigationButton.setText(CATEGORY_NAMES[section][item]+" ▾");}
+        navigationButton.setText(CodeplugNavigation.title(category)+" ▾");
         refreshSummary();
         refreshAddButton();
         visibleObjects.clear();
-        findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10 || category == 9 || category == 14 || category == 15) ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10 || category == 9 || category == 14 || category == 16) ? View.VISIBLE : View.GONE);
         if (model == null) return;
         List<String> rows = new ArrayList<>();
+        int[] children=CodeplugNavigation.children(category);
+        if(children.length>0){
+            for(int child:children){
+                String detail=sectionDetail(child);
+                rows.add(CodeplugNavigation.title(child)+"  ›"+(detail.isEmpty()?"":"\n"+detail));
+                visibleObjects.add(new CodeplugNavigation.Link(child));
+            }
+            listView.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,rows));
+            return;
+        }
         switch (category) {
-            case 0:
-                addText(rows, "Каналы: " + model.channels.size() + " / 1024");
-                addText(rows, "Зоны: " + model.zones.size() + " / 250");
-                addText(rows, "DMR контакты: " + model.contacts.size() + " / 1024");
-                addText(rows, "Группы приёма: " + model.rxGroups.size() + " / 76");
-                addText(rows, "Списки сканирования: " + model.scanLists.size() + " / 64");
-                addText(rows, "Настройки APRS: " + model.aprsConfigs.size() + " / 8");
-                addText(rows, "DTMF контакты: " + model.dtmfContacts.size() + " / 63");
-                addText(rows, "Спутники: " + model.satellites.size() + " / 25");
-                break;
             case 1:
                 for (CodeplugModel.Channel c : model.channels) {
                     visibleObjects.add(c); rows.add(c.oneLine());
@@ -295,7 +265,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
                 addText(rows, "Границы VHF: " + model.deviceInfo.vhfRangeText());
                 addText(rows, "Границы прочитаны из codeplug и могут отличаться от текущих ограничений передачи в прошивке.");
                 break;
-            case 15:
+            case 16:
                 addText(rows, "Чувствительность VOX: " + model.general.voxSense);
                 addText(rows, String.format(Locale.US, "Общие флаги (HEX): %02X %02X %02X %02X",
                         model.general.flag1, model.general.flag2, model.general.flag3, model.general.flag4));
@@ -566,7 +536,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
         navigationButton.setEnabled(loaded);
         findViewById(R.id.searchToggleButton).setVisibility(loaded?View.VISIBLE:View.GONE);
         if(!loaded)findViewById(R.id.projectSearchRow).setVisibility(View.GONE);
-        findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || activeCategory == 15) ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || activeCategory == 16) ? View.VISIBLE : View.GONE);
         if (!loaded) {
             summaryText.setMaxLines(4);
             summaryText.setText("Откройте проект через меню ⋮ или прочитайте радиостанцию с главного экрана.");

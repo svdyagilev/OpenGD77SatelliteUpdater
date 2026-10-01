@@ -1,192 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fillViewport="true">
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="OpenGD77 CPS Android"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/versionText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="Satellite / Keps module"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Радиостанция"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/radioSummaryText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="6dp"
-            android:paddingBottom="10dp"
-            android:text="Не подключена" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Орбитальные данные"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tleSummaryText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="6dp"
-            android:paddingBottom="10dp"
-            android:text="TLE ещё не загружены" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Состояние"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/operationSummaryText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="6dp"
-            android:paddingBottom="12dp"
-            android:text="Готово" />
-
-        <Button
-            android:id="@+id/autoUpdateButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Проверить и обновить Keps" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Codeplug • редактор и запись"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/callsignDatabaseButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="База позывных DMR" />
-
-        <TextView
-            android:id="@+id/codeplugSummaryMainText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="6dp"
-            android:paddingBottom="8dp"
-            android:text="Чтение, редактирование проекта и запись выбранных разделов в MD-9600." />
-
-        <ru.opengd77.satupdate.CodeplugReadButton
-            android:id="@+id/readCodeplugButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Прочитать и открыть codeplug" />
-        <Button android:id="@+id/editorProjectButton" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:text="Открыть редактор / проект" />
-
-        <Button
-            android:id="@+id/advancedToggleButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Расширенный режим ▾" />
-
-        <LinearLayout
-            android:id="@+id/advancedContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:visibility="gone">
-
-            <Spinner
-                android:id="@+id/sourceSpinner"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp" />
-
-            <EditText
-                android:id="@+id/urlEdit"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textUri"
-                android:singleLine="true" />
-
-            <Button
-                android:id="@+id/downloadButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Скачать и проверить TLE" />
-
-            <Button
-                android:id="@+id/openFileButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Открыть локальный TLE-файл" />
-
-            <Button
-                android:id="@+id/connectButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Подключить MD-9600 и прочитать" />
-
-            <Button
-                android:id="@+id/dryRunButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Подготовить обновление / Dry Run" />
-
-            <Button
-                android:id="@+id/updateButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:enabled="false"
-                android:text="Записать свежие Keps" />
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/mainScroll" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="OpenGD77 CPS" android:textSize="24sp" android:textStyle="bold" />
+        <TextView android:id="@+id/versionText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp" />
+        <TextView android:id="@+id/radioSummaryText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="12dp" android:paddingBottom="8dp" android:text="Не подключена" />
+        <LinearLayout android:id="@+id/mainPage" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Проект радиостанции" android:textStyle="bold" android:textSize="18sp" android:layout_marginTop="12dp" />
+            <TextView android:id="@+id/codeplugSummaryMainText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="6dp" android:paddingBottom="8dp" android:text="Каналы, зоны, контакты и настройки MD-9600" />
+            <Button android:id="@+id/editorProjectButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Редактор / открыть проект  ›" android:textAllCaps="false" />
+            <ru.opengd77.satupdate.CodeplugReadButton android:id="@+id/readCodeplugButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Прочитать проект из рации" android:textAllCaps="false" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Инструменты" android:textStyle="bold" android:textSize="18sp" android:layout_marginTop="16dp" />
+            <Button android:id="@+id/callsignDatabaseButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="База позывных DMR  ›" android:textAllCaps="false" />
+            <Button android:id="@+id/satellitePageButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Спутники и орбитальные данные  ›" android:textAllCaps="false" />
         </LinearLayout>
-
-        <Button
-            android:id="@+id/diagnosticsToggleButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Диагностика ▾" />
-
-        <LinearLayout
-            android:id="@+id/diagnosticsContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:fontFamily="monospace"
-                android:text="Готово."
-                android:textIsSelectable="true"
-                android:textSize="12sp" />
+        <LinearLayout android:id="@+id/satellitePage" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+            <Button android:id="@+id/satelliteBackButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="‹  На главный экран" android:textAllCaps="false" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Спутники / Keps" android:textStyle="bold" android:textSize="20sp" />
+            <TextView android:id="@+id/tleSummaryText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="8dp" android:paddingBottom="8dp" android:text="TLE ещё не загружены" />
+            <Button android:id="@+id/autoUpdateButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Проверить и обновить Keps" android:textAllCaps="false" />
+            <Button android:id="@+id/advancedToggleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Источник TLE и ручные операции ▾" android:textAllCaps="false" />
+            <LinearLayout android:id="@+id/advancedContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <Spinner android:id="@+id/sourceSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" />
+                <EditText android:id="@+id/urlEdit" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textUri" android:singleLine="true" />
+                <Button android:id="@+id/downloadButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Скачать и проверить TLE" />
+                <Button android:id="@+id/openFileButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Открыть локальный TLE-файл" />
+                <Button android:id="@+id/connectButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Подключить MD-9600 и прочитать" />
+                <Button android:id="@+id/dryRunButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Подготовить обновление / Dry Run" />
+                <Button android:id="@+id/updateButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:enabled="false" android:text="Записать свежие Keps" />
+            </LinearLayout>
         </LinearLayout>
-
+        <TextView android:id="@+id/operationSummaryText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="12dp" android:paddingBottom="8dp" android:text="Готово" />
+        <Button android:id="@+id/diagnosticsToggleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Журнал операций ▾" android:textAllCaps="false" />
+        <LinearLayout android:id="@+id/diagnosticsContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+            <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:fontFamily="monospace" android:text="Готово." android:textIsSelectable="true" android:textSize="12sp" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>
