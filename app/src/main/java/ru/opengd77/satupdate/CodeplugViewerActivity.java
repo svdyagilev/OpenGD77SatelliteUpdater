@@ -20,8 +20,10 @@ import java.util.Locale;
 public class CodeplugViewerActivity extends ScreenActivity {
     private CodeplugModel model;
     private int activeCategory;
-    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602;
+    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604;
+    private final java.util.concurrent.ExecutorService toolsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private byte[] pendingExport;
+    private android.app.ProgressDialog toolsProgress;
     private Button navigationButton;
     private boolean searching;
     private EditText projectSearch;
@@ -114,13 +116,14 @@ public class CodeplugViewerActivity extends ScreenActivity {
     }
 
     private void editorMenu() {
-        String[] items={"Проект: открыть, сохранить, отменить","Записать в радиостанцию","База позывных","Сведения о проекте"};
+        String[] items={"Проект: открыть, сохранить, отменить","Записать в радиостанцию","База позывных","Сведения о проекте","Инструменты каналов и зон"};
         new AlertDialog.Builder(this).setTitle("Действия").setItems(items,(dialog,which)->{
             if(which==0)projectMenu();
             else if(which==1){
                 if(model==null){problem(new IllegalStateException("Сначала откройте или прочитайте проект"));return;}
                 startActivity(new Intent(this,CodeplugWriteActivity.class));finish();
             }else if(which==2)startActivity(new Intent(this,CallsignActivity.class));
+            else if(which==4)channelTools();
             else if(model!=null&&CodeplugSession.project!=null)new AlertDialog.Builder(this).setTitle("Сведения о проекте")
                     .setMessage(model.general.radioName+" • DMR ID "+model.general.dmrId+"\n"+model.compactSummary()
                             +"\nИзменено байтов: "+CodeplugSession.project.changedBytes()+"\nПравки автоматически сохраняются на телефоне.")
@@ -407,12 +410,122 @@ public class CodeplugViewerActivity extends ScreenActivity {
         AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle(title).setMessage(message)
                 .setPositiveButton("Закрыть", null);
         if (CodeplugSession.project != null && CodeplugEditDialogs.supported(obj)) {
-            dialog.setNeutralButton("Изменить", (d, w) ->
-                    CodeplugEditDialogs.edit(this, obj, model, this::commitEdit));
+            dialog.setNeutralButton(obj instanceof CodeplugModel.Channel&&((CodeplugModel.Channel)obj).index>0||obj instanceof CodeplugModel.Zone?"Действия":"Изменить", (d, w) -> {
+                if(obj instanceof CodeplugModel.Channel&&((CodeplugModel.Channel)obj).index>0||obj instanceof CodeplugModel.Zone)recordActions(obj);
+                else CodeplugEditDialogs.edit(this,obj,model,this::commitEdit);
+            });
         }
         if(CodeplugSession.project!=null&&CodeplugRecords.kind(obj)!=null)dialog.setNegativeButton("Удалить",(d,w)->confirmDelete(obj,title));
         dialog.show();
     }
+    private void recordActions(Object item) {
+        boolean channel=item instanceof CodeplugModel.Channel;
+        String[] actions=channel?new String[]{"Изменить","Копировать канал","Создать серию по шаблону"}
+                :new String[]{"Изменить имя и состав","Копировать зону","Добавить и упорядочить каналы"};
+        new AlertDialog.Builder(this).setTitle(channel?((CodeplugModel.Channel)item).name:((CodeplugModel.Zone)item).name)
+            .setItems(actions,(dialog,which)->{
+                if(which==0)CodeplugEditDialogs.edit(this,item,model,this::commitEdit);
+                else if(which==1)copyRecord(item);
+                else if(channel)CodeplugEditDialogs.series(this,(CodeplugModel.Channel)item,change->reviewChange("Создание серии каналов",change));
+                else CodeplugEditDialogs.zoneOrder(this,(CodeplugModel.Zone)item,model,change->reviewChange("Изменение состава зоны",change));
+            }).show();
+    }
+
+    private void copyRecord(Object item) {
+        EditText name=new EditText(this);name.setSingleLine(true);name.setHint("Имя копии (до 16 символов)");
+        String original=item instanceof CodeplugModel.Channel?((CodeplugModel.Channel)item).name:((CodeplugModel.Zone)item).name;
+        name.setText(original);name.selectAll();
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Копировать: "+original).setView(name)
+            .setNegativeButton("Отмена",null).setPositiveButton("Подготовить копию",null).create();
+        dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{
+            String value=name.getText().toString().trim();
+            if(value.isEmpty()){name.setError("Укажите имя");return;}
+            reviewChange("Копирование: "+value,snapshot->{
+                if(item instanceof CodeplugModel.Channel)ChannelBatch.copyChannel(snapshot,((CodeplugModel.Channel)item).index,value,java.util.Collections.emptyMap());
+                else ChannelBatch.copyZone(snapshot,((CodeplugModel.Zone)item).index,value);
+            });dialog.dismiss();
+        }));dialog.show();
+    }
+
+    private void channelTools() {
+        if(model==null||CodeplugSession.project==null){problem(new IllegalStateException("Сначала откройте или прочитайте проект"));return;}
+        String[] actions={"Массовая правка каналов","Серия по шаблону канала","Копировать канал","Копировать зону","Состав и порядок каналов зоны","Экспорт каналов в CSV","Импорт каналов из CSV"};
+        new AlertDialog.Builder(this).setTitle("Каналы и зоны").setItems(actions,(dialog,which)->{
+            if(which==0)selectBatchChannels();
+            else if(which==1||which==2)pickRecord(false,item->{
+                if(which==1)CodeplugEditDialogs.series(this,(CodeplugModel.Channel)item,change->reviewChange("Создание серии каналов",change));else copyRecord(item);
+            });
+            else if(which==3||which==4)pickRecord(true,item->{
+                if(which==3)copyRecord(item);else CodeplugEditDialogs.zoneOrder(this,(CodeplugModel.Zone)item,model,change->reviewChange("Изменение состава зоны",change));
+            });
+            else if(which==5)exportChannels();else importChannels();
+        }).show();
+    }
+    private interface Picked {void apply(Object item);}
+    private void pickRecord(boolean zones,Picked picked) {
+        List<Object> items=new ArrayList<>();if(zones)items.addAll(model.zones);else items.addAll(model.channels);
+        if(items.isEmpty()){problem(new IllegalArgumentException(zones?"Зон пока нет":"Каналов пока нет"));return;}
+        String[] labels=new String[items.size()];for(int i=0;i<labels.length;i++)labels[i]=oneLine(items.get(i));
+        new AlertDialog.Builder(this).setTitle(zones?"Выберите зону":"Выберите исходный канал").setItems(labels,(dialog,which)->picked.apply(items.get(which))).setNegativeButton("Отмена",null).show();
+    }
+    private void selectBatchChannels() {
+        List<CodeplugModel.Channel> channels=new ArrayList<>(model.channels);String[] labels=new String[channels.size()];boolean[] checked=new boolean[labels.length];
+        for(int i=0;i<labels.length;i++)labels[i]=channels.get(i).oneLine();
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Каналы для массовой правки").setMultiChoiceItems(labels,checked,(d,which,on)->checked[which]=on)
+                .setNegativeButton("Отмена",null).setNeutralButton("Выбрать все",null).setPositiveButton("Далее",null).create();
+        dialog.setOnShowListener(v->{
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(button->{
+                boolean all=true;for(boolean value:checked)all&=value;
+                for(int i=0;i<checked.length;i++){checked[i]=!all;dialog.getListView().setItemChecked(i,!all);}
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setText(all?"Выбрать все":"Снять выбор");
+            });
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{
+                List<Integer> ids=new ArrayList<>();int fm=0,dmr=0;
+                for(int i=0;i<checked.length;i++)if(checked[i]){ids.add(channels.get(i).index);if(channels.get(i).digital)dmr++;else fm++;}
+                if(ids.isEmpty()){problem(new IllegalArgumentException("Выберите хотя бы один канал"));return;}
+                final String title="Массовая правка: "+ids.size()+" каналов (FM "+fm+", DMR "+dmr+")";
+                CodeplugEditDialogs.bulkChannels(this,model,ids,change->reviewChange(title,change));dialog.dismiss();
+            });
+        });dialog.show();
+    }
+    private interface Operation {CodeplugProject apply(CodeplugProject base)throws Exception;}
+    private void reviewChange(String title,CodeplugProject.Change change){reviewOperation(title,base->base.edit(change));}
+    private void reviewOperation(String title,Operation operation) {
+        CodeplugProject base=CodeplugSession.project;
+        if(base==null){problem(new IllegalStateException("Нет открытого проекта"));return;}
+        android.app.ProgressDialog progress=android.app.ProgressDialog.show(this,title,"Подготовка и проверка…",true,true);toolsProgress=progress;
+        java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.Future<?> task=toolsWorker.submit(()->{
+            try{
+                CodeplugProject next=operation.apply(base);CodeplugIntegrity.masks(next);CodeplugIntegrity.links(next.original,next.working);
+                CodeplugModel before=base.model(),after=next.model();int changed=0;
+                byte[][] a=CodeplugProject.blocks(base.working),b=CodeplugProject.blocks(next.working);
+                for(int block=0;block<a.length;block++)for(int offset=0;offset<a[block].length;offset++)if(a[block][offset]!=b[block][offset])changed++;
+                final int changedBytes=changed;
+                runOnUiThread(()->{
+                    if(cancelled.get()||isFinishing()||isDestroyed())return;progress.dismiss();
+                    if(changedBytes==0){new AlertDialog.Builder(this).setMessage("Изменений нет. Проверьте выбранные поля и режимы каналов.").setPositiveButton("OK",null).show();return;}
+                    String summary="Будет добавлено каналов: "+(after.channels.size()-before.channels.size())+"\nБудет добавлено зон: "+(after.zones.size()-before.zones.size())
+                            +"\nИзменено байтов: "+changedBytes+"\n\nПравки будут применены к проекту на телефоне и отменяются одним шагом через меню «Проект».";
+                    new AlertDialog.Builder(this).setTitle(title).setMessage(summary).setNegativeButton("Отмена",null).setPositiveButton("Применить к проекту",(dialog,which)->{
+                        try{if(CodeplugSession.project!=base)throw new IllegalStateException("Проект изменился. Подготовьте операцию заново.");installProject(next);}
+                        catch(Exception e){problem(e);}
+                    }).show();
+                });
+            }catch(Exception e){runOnUiThread(()->{if(cancelled.get()||isFinishing()||isDestroyed())return;progress.dismiss();problem(e);});}
+        });progress.setOnCancelListener(dialog->{cancelled.set(true);task.cancel(true);});
+    }
+    private void exportChannels() {
+        pendingExport=ChannelCsv.export(model).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/csv")
+                .putExtra(Intent.EXTRA_TITLE,"MD9600-channels.csv");startActivityForResult(intent,EXPORT_CHANNELS);
+    }
+    private void importChannels() {
+        new AlertDialog.Builder(this).setTitle("Импорт каналов CSV").setMessage("Каналы будут добавлены в свободные места. Существующие каналы сохраняются.\n\nUTF-8; обязательные столбцы: name, rx_mhz, tx_mhz, mode (FM/DMR). Можно использовать CSV из экспорта приложения. Ссылки на контакты, группы и APRS должны существовать в текущем проекте.")
+            .setNegativeButton("Отмена",null).setPositiveButton("Выбрать CSV",(dialog,which)->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),IMPORT_CHANNELS)).show();
+    }
+    @Override protected void onDestroy(){toolsWorker.shutdownNow();if(toolsProgress!=null)toolsProgress.dismiss();super.onDestroy();}
+
     private void confirmDelete(Object obj,String title){
         try{
             CodeplugProject current=CodeplugSession.project;
@@ -628,6 +741,22 @@ public class CodeplugViewerActivity extends ScreenActivity {
                 try (java.io.InputStream in = getContentResolver().openInputStream(data.getData())) {
                     installProject(CodeplugProject.read(in));
                 }
+            } else if(requestCode==IMPORT_CHANNELS){
+                final android.net.Uri uri=data.getData();
+                reviewOperation("Импорт каналов CSV",base->{
+                    java.util.List<java.util.Map<String,String>> rows;
+                    try(java.io.InputStream in=getContentResolver().openInputStream(uri)){
+                        if(in==null)throw new java.io.IOException("Файл не открыт");
+                        java.nio.charset.CharsetDecoder decoder=java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+                        rows=ChannelCsv.read(new java.io.InputStreamReader(in,decoder));
+                    }return base.edit(snapshot->ChannelCsv.append(snapshot,rows));
+                });
+            } else if(requestCode==EXPORT_CHANNELS){
+                byte[] bytes=pendingExport!=null?pendingExport:ChannelCsv.export(model).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                try(java.io.OutputStream out=getContentResolver().openOutputStream(data.getData(),"wt")){
+                    if(out==null)throw new java.io.IOException("Файл не открыт");out.write(bytes);out.flush();
+                }android.widget.Toast.makeText(this,"Таблица каналов сохранена",android.widget.Toast.LENGTH_LONG).show();
             } else if (requestCode == SAVE_PROJECT) {
                 byte[] bytes = pendingExport != null ? pendingExport : CodeplugSession.project.encode();
                 try (java.io.OutputStream out = getContentResolver().openOutputStream(data.getData(), "wt")) {
