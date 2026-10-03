@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.zip.*;
 
 /** Standalone callsign database import/preview/write screen; never edits the codeplug project. */
-public class CallsignActivity extends Activity {
+public class CallsignActivity extends ScreenActivity {
     private static final String PERMISSION="ru.opengd77.satupdate.CALLSIGN_USB";
     private static final String SOURCE="https://database.radioid.net/static/user.csv";
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -23,7 +23,10 @@ public class CallsignActivity extends Activity {
     private final List<View> csvOnlyControls=new ArrayList<>();
     private final List<CallsignDatabase.Entry> visibleEntries=new ArrayList<>();
     private EditText region,search;private Spinner length,separator,charset;private CheckBox[] fields;
-    private TextView summary,status;private Button write,addEntryButton,back;private ListView preview;
+    private TextView summary,status;private Button write,addEntryButton,back,openEditorButton;private ListView preview;
+    private LinearLayout formPage,editorPage;
+    private TextView previewSummary;
+    private boolean editorOpen;
     private CallsignDatabase database,writeDatabase;private UsbManager manager;private UsbCdcSerialTransport transport;
     private OpenGd77Protocol protocol;private volatile boolean busy;private boolean permissionPending,radioSource,pendingWrite;
     private UsbDevice pendingDevice;private File exportFile;private String sourceLabel="";
@@ -34,7 +37,7 @@ public class CallsignActivity extends Activity {
     }};
     @Override public void onCreate(Bundle state){
         super.onCreate(state);manager=(UsbManager)getSystemService(USB_SERVICE);transport=new UsbCdcSerialTransport(manager);protocol=new OpenGd77Protocol(transport);
-        LinearLayout root=new LinearLayout(this);root.setOrientation(1);int pad=(int)(12*getResources().getDisplayMetrics().density);root.setPadding(pad,pad,pad,pad);
+        LinearLayout root=new LinearLayout(this);root.setOrientation(1);int pad=(int)(12*getResources().getDisplayMetrics().density);root.setPadding(pad,pad,pad,pad);formPage=root;
         ScrollView scroll=new ScrollView(this);LinearLayout form=new LinearLayout(this);form.setOrientation(1);scroll.addView(form);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         label(form,"База позывных • MD-9600",22);
         label(form,"Отдельная база DMR ID → позывной. Запись заменяет базу целиком.",14);
@@ -50,31 +53,45 @@ public class CallsignActivity extends Activity {
         Button apply=button(form,"Применить фильтры / обновить предпросмотр",()->apply());csvOnlyControls.add(apply);
         label(form,"Предпросмотр показывает полные выбранные поля. В рации отображается начало строки до выбранного лимита символов. При 48 символах помещается больше имени и города, но меньше ID.",14);
         summary=label(form,"CSV ещё не загружен. Вместимость при 16 символах: "+CallsignDatabase.capacity(16),15);
-        search=new EditText(this);search.setSingleLine(true);search.setHint("Поиск по ID или тексту записи");form.addView(search);controls.add(search);
-        button(form,"Найти в подготовленной базе",()->showPreview());
-        addEntryButton=button(form,"Добавить запись вручную",()->editEntry(null));
-        preview=new ListView(this);root.addView(preview,new LinearLayout.LayoutParams(-1,0,1));
-        preview.setOnItemClickListener((parent,view,position,id)->{if(position<visibleEntries.size())editEntry(visibleEntries.get(position));});
+        openEditorButton=button(form,"Список и редактор позывных  ›",()->openEditor());
+        editorPage=new LinearLayout(this);editorPage.setOrientation(1);editorPage.setPadding(pad,pad,pad,pad);
+        button(editorPage,"‹  Назад к базе позывных",()->closeEditor());
+        label(editorPage,"Список позывных",22);
+        search=new EditText(this);search.setSingleLine(true);search.setHint("Поиск по ID или тексту записи");editorPage.addView(search);controls.add(search);
+        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        search.setOnEditorActionListener((v,action,event)->{
+            if(action==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH){showPreview();hideEditorKeyboard();return true;}return false;
+        });
+        LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);editorPage.addView(actions);
+        Button find=button(actions,"Найти",()->{showPreview();hideEditorKeyboard();});
+        find.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
+        addEntryButton=button(actions,"Добавить",()->editEntry(null));
+        addEntryButton.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
+        previewSummary=label(editorPage,"",14);
+        preview=new ListView(this);editorPage.addView(preview,new LinearLayout.LayoutParams(-1,0,1));
+        preview.setOnItemClickListener((parent,view,position,id)->{if(!busy&&position<visibleEntries.size())editEntry(visibleEntries.get(position));});
+        label(editorPage,"Правки сохраняются в подготовленной базе. Для передачи в рацию вернитесь и нажмите «Записать базу в рацию».",14);
         status=new TextView(this);status.setTextIsSelectable(true);root.addView(status);
         write=button(root,"Записать базу в рацию",()->confirm(false));
         LinearLayout bottom=new LinearLayout(this);bottom.setOrientation(1);root.addView(bottom);
         button(bottom,"Очистить базу рации",()->confirm(true));button(bottom,"Резервные копии",()->exportBackup());
-        back=button(root,"Назад",()->leave());setContentView(root);
+        back=button(root,"Назад",()->leave());
+        FrameLayout pages=new FrameLayout(this);pages.addView(formPage);pages.addView(editorPage);editorPage.setVisibility(View.GONE);setContentView(pages);
         TextWatcher changed=new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){if(!radioSource)invalidatePreview();}public void afterTextChanged(Editable e){}};
         region.addTextChangedListener(changed);for(CheckBox f:fields)f.setOnCheckedChangeListener((v,c)->{if(!radioSource)invalidatePreview();});
         AdapterView.OnItemSelectedListener selected=new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int n,long id){if(!radioSource)invalidatePreview();}public void onNothingSelected(AdapterView<?> p){}};
         length.setOnItemSelectedListener(selected);separator.setOnItemSelectedListener(selected);charset.setOnItemSelectedListener(selected);
-        write.setEnabled(false);addEntryButton.setEnabled(false);if(sourceFile().isFile())status.setText("Последний CSV сохранён. Нажмите «Применить фильтры».");
+        write.setEnabled(false);addEntryButton.setEnabled(false);openEditorButton.setEnabled(false);if(sourceFile().isFile())status.setText("Последний CSV сохранён. Нажмите «Применить фильтры».");
         IntentFilter f=new IntentFilter(PERMISSION);if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);
     }
     private TextView label(LinearLayout parent,String text,int size){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);parent.addView(v);return v;}
     private Button button(LinearLayout parent,String text,Runnable action){Button b=new Button(this);b.setText(text);parent.addView(b);controls.add(b);b.setOnClickListener(v->{if(!busy)action.run();});return b;}
     private Spinner spinner(LinearLayout parent,String[] names){Spinner s=new Spinner(this);s.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));parent.addView(s);controls.add(s);return s;}
     private File sourceFile(){return new File(getFilesDir(),"callsign-source.csv");}
-    private void invalidatePreview(){if(busy)return;database=null;write.setEnabled(false);preview.setAdapter(null);summary.setText("Нажмите «Применить фильтры». Вместимость: "+CallsignDatabase.capacity(CallsignDatabase.LENGTHS[length.getSelectedItemPosition()]));}
+    private void invalidatePreview(){if(busy)return;database=null;write.setEnabled(false);addEntryButton.setEnabled(false);openEditorButton.setEnabled(false);visibleEntries.clear();preview.setAdapter(null);previewSummary.setText("");summary.setText("Нажмите «Применить фильтры». Вместимость: "+CallsignDatabase.capacity(CallsignDatabase.LENGTHS[length.getSelectedItemPosition()]));}
     private CallsignDatabase.Options options(){boolean[] f=new boolean[5];for(int i=0;i<5;i++)f[i]=fields[i].isChecked();return new CallsignDatabase.Options(region.getText().toString(),f,separator.getSelectedItemPosition()==0?" ":".",CallsignDatabase.LENGTHS[length.getSelectedItemPosition()]);}
     private void persistOptions(){android.content.SharedPreferences.Editor e=getPreferences(0).edit().putString("region",region.getText().toString()).putInt("length",length.getSelectedItemPosition()).putInt("separator",separator.getSelectedItemPosition());for(int i=0;i<5;i++)e.putBoolean("field"+i,fields[i].isChecked());e.apply();}
-    private void setBusy(boolean value){busy=value;for(View v:controls)v.setEnabled(!value);if(!value&&radioSource)for(View v:csvOnlyControls)v.setEnabled(false);write.setEnabled(!value&&database!=null&&!database.entries.isEmpty());addEntryButton.setEnabled(!value&&database!=null);if(value)getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);}
+    private void setBusy(boolean value){busy=value;for(View v:controls)v.setEnabled(!value);if(!value&&radioSource)for(View v:csvOnlyControls)v.setEnabled(false);write.setEnabled(!value&&database!=null&&!database.entries.isEmpty());addEntryButton.setEnabled(!value&&database!=null);openEditorButton.setEnabled(!value&&database!=null);if(value)getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);}
     private void setRadioSource(boolean value){radioSource=value;for(View v:csvOnlyControls)v.setEnabled(!busy&&!value);}
     private void log(String text){runOnUiThread(()->status.setText(text));}
     private void finishTask(String text){runOnUiThread(()->{setBusy(false);status.setText(text);});}
@@ -108,7 +125,7 @@ public class CallsignActivity extends Activity {
     private void copy(InputStream in,File outFile)throws IOException {
         if(in==null)throw new IOException("Файл не открыт");try(FileOutputStream out=new FileOutputStream(outFile)){byte[] b=new byte[16384];int n;long total=0;while((n=in.read(b))!=-1){total+=n;if(total>80L*1024*1024)throw new IOException("CSV больше 80 МБ");out.write(b,0,n);}out.getFD().sync();}
     }
-    private void showPreview(){if(database==null)return;String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);List<String> text=new ArrayList<>();visibleEntries.clear();int matches=0;for(CallsignDatabase.Entry e:database.entries){if(query.isEmpty()||Integer.toString(e.id).contains(query)||e.text.toLowerCase(Locale.ROOT).contains(query)){matches++;if(text.size()<200){visibleEntries.add(e);text.add(e.id+"   "+e.text+(e.encoded.length()<e.text.length()?"  →  "+e.encoded+"…":""));}}}preview.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,text));status.setText("Найдено: "+matches+". Показано: "+text.size()+". Нажмите запись для изменения. При записи используются все "+database.entries.size()+" записей подготовленной базы.");}
+    private void showPreview(){if(database==null)return;String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);List<String> text=new ArrayList<>();visibleEntries.clear();int matches=0;for(CallsignDatabase.Entry e:database.entries){if(query.isEmpty()||Integer.toString(e.id).contains(query)||e.text.toLowerCase(Locale.ROOT).contains(query)){matches++;if(text.size()<200){visibleEntries.add(e);text.add(e.id+"   "+e.text+(e.encoded.length()<e.text.length()?"  →  "+e.encoded+"…":""));}}}preview.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,text));previewSummary.setText("Найдено: "+matches+". Показано: "+text.size()+". Нажмите запись для изменения. При записи используются все "+database.entries.size()+" записей подготовленной базы.");}
     private void editEntry(CallsignDatabase.Entry existing){
         if(database==null){log("Сначала прочитайте базу из рации или загрузите CSV.");return;}
         LinearLayout box=new LinearLayout(this);box.setOrientation(1);int pad=(int)(12*getResources().getDisplayMetrics().density);box.setPadding(pad,0,pad,0);
@@ -191,7 +208,10 @@ public class CallsignActivity extends Activity {
         if(request==1){try{CallsignDatabase.Options o=options();Charset c=selectedCharset();persistOptions();database=null;setBusy(true);worker.execute(()->{File tmp=new File(getCacheDir(),"callsign-import.csv");try(InputStream in=getContentResolver().openInputStream(data.getData())){copy(in,tmp);CallsignDatabase db=parse(tmp,o,c);replaceSource(tmp);sourceLabel="Импорт CSV";loaded(db);}catch(Exception e){finishTask("Ошибка импорта: "+e.getMessage());}finally{tmp.delete();}});}catch(Exception e){log(e.getMessage());}}
         else if(request==2&&exportFile!=null){File file=exportFile;setBusy(true);worker.execute(()->{try(InputStream in=new FileInputStream(file);OutputStream out=getContentResolver().openOutputStream(data.getData(),"wt")){if(out==null)throw new IOException("Файл не открыт");byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);out.flush();finishTask("Резервная копия сохранена.");}catch(Exception e){finishTask("Ошибка экспорта: "+e.getMessage());}});}
     }
+    private void hideEditorKeyboard(){((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(search.getWindowToken(),0);}
+    private void openEditor(){if(database==null||busy)return;editorOpen=true;formPage.setVisibility(View.GONE);editorPage.setVisibility(View.VISIBLE);showPreview();}
+    private void closeEditor(){if(busy)return;hideEditorKeyboard();editorOpen=false;editorPage.setVisibility(View.GONE);formPage.setVisibility(View.VISIBLE);}
     private void leave(){if(!busy)finish();}
-    @Override public void onBackPressed(){leave();}
+    @Override public void onBackPressed(){if(editorOpen)closeEditor();else leave();}
     @Override protected void onDestroy(){try{unregisterReceiver(receiver);}catch(Exception ignored){}if(!busy){transport.close();worker.shutdown();}super.onDestroy();}
 }

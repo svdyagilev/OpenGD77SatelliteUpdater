@@ -1,51 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Редактор codeplug"
-        android:textSize="22sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/codeplugSummaryText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="Только чтение"
-        android:textSize="14sp" />
-
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        <Button android:id="@+id/writeCodeplugButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Записать" />
-        <Button android:id="@+id/projectMenuButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Проект" />
-        <Button android:id="@+id/editGeneralButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Изменить" android:visibility="gone" />
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:paddingLeft="8dp" android:paddingRight="8dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <Button android:id="@+id/codeplugCloseButton" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:padding="0dp" android:text="‹" android:textSize="28sp" android:contentDescription="На уровень выше" />
+        <Button android:id="@+id/codeplugNavigationButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minWidth="0dp" android:text="Обзор ▾" android:textAllCaps="false" android:gravity="start|center_vertical" android:contentDescription="Выбрать раздел редактора" />
+        <Button android:id="@+id/searchToggleButton" android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp" android:text="Поиск" android:textAllCaps="false" />
+        <Button android:id="@+id/editorMenuButton" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:padding="0dp" android:text="⋮" android:textSize="24sp" android:contentDescription="Действия с проектом и радиостанцией" />
     </LinearLayout>
-
-    <Spinner
-        android:id="@+id/codeplugCategorySpinner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp" />
-
-    <Button android:id="@+id/addRecordButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Добавить" android:visibility="gone" />
-
-    <ListView
-        android:id="@+id/codeplugList"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp"
-        android:dividerHeight="1dp" />
-
-    <Button
-        android:id="@+id/codeplugCloseButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Назад" />
-
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/codeplugSummaryText" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:paddingLeft="8dp" android:paddingRight="8dp" android:textSize="14sp" />
+        <Button android:id="@+id/editGeneralButton" android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp" android:text="Изменить" android:textAllCaps="false" android:visibility="gone" />
+        <Button android:id="@+id/addRecordButton" android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp" android:text="+ Добавить" android:textAllCaps="false" android:visibility="gone" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/projectSearchRow" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:visibility="gone">
+        <EditText android:id="@+id/projectSearchEdit" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:hint="Поиск по всему проекту" android:singleLine="true" android:inputType="text" android:imeOptions="actionSearch" />
+        <Button android:id="@+id/projectSearchButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Найти" android:textAllCaps="false" />
+    </LinearLayout>
+    <ListView android:id="@+id/codeplugList" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:dividerHeight="1dp" />
 </LinearLayout>

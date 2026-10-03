@@ -1,6 +1,5 @@
 package ru.opengd77.satupdate;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -33,7 +32,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MainActivity extends Activity {
+public class MainActivity extends ScreenActivity {
     private static final String USB_PERMISSION = "ru.opengd77.satupdate.USB_PERMISSION";
     private static final int OPEN_TLE_REQUEST = 1001;
     private static final String CELESTRAK = "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle";
@@ -133,7 +132,7 @@ public class MainActivity extends Activity {
         advancedContainer = findViewById(R.id.advancedContainer);
         diagnosticsContainer = findViewById(R.id.diagnosticsContainer);
 
-        versionText.setText("v" + BuildConfig.VERSION_NAME + " • Satellite/Keps • Android 6+");
+        versionText.setText("v" + BuildConfig.VERSION_NAME + " • MD-9600 / OpenGD77");
 
         String[] sources = {"CelesTrak — amateur", "R4UAB — satonline.txt", "Свой URL"};
         sourceSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, sources));
@@ -176,13 +175,16 @@ public class MainActivity extends Activity {
         connectButton.setOnClickListener(v -> requestConnect());
         dryRunButton.setOnClickListener(v -> runDryRun());
         updateButton.setOnClickListener(v -> confirmUpdate());
-        advancedToggleButton.setOnClickListener(v -> toggleSection(advancedContainer, advancedToggleButton, "Расширенный режим"));
-        diagnosticsToggleButton.setOnClickListener(v -> toggleSection(diagnosticsContainer, diagnosticsToggleButton, "Диагностика"));
+        advancedToggleButton.setOnClickListener(v -> toggleSection(advancedContainer, advancedToggleButton, "Источник TLE и ручные операции"));
+        diagnosticsToggleButton.setOnClickListener(v -> toggleSection(diagnosticsContainer, diagnosticsToggleButton, "Журнал операций"));
 
         IntentFilter f = new IntentFilter(USB_PERMISSION);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbReceiver, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(usbReceiver, f);
 
+        findViewById(R.id.satellitePageButton).setOnClickListener(v -> showSatellitePage(true));
+        findViewById(R.id.satelliteBackButton).setOnClickListener(v -> showSatellitePage(false));
+        if(savedInstanceState!=null)showSatellitePage(savedInstanceState.getBoolean("satellitePage",false));
         updateButtons();
     }
 
@@ -206,6 +208,23 @@ public class MainActivity extends Activity {
             setOperationSummary("Ожидание подключения радиостанции");
             setBusy(false, true);
         }
+    }
+
+    private void showSatellitePage(boolean open) {
+        findViewById(R.id.mainPage).setVisibility(open?View.GONE:View.VISIBLE);
+        findViewById(R.id.satellitePage).setVisibility(open?View.VISIBLE:View.GONE);
+        android.widget.ScrollView scroll=findViewById(R.id.mainScroll);
+        scroll.post(()->scroll.scrollTo(0,0));
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putBoolean("satellitePage",findViewById(R.id.satellitePage).getVisibility()==View.VISIBLE);
+    }
+
+    @Override public void onBackPressed() {
+        if(findViewById(R.id.satellitePage).getVisibility()==View.VISIBLE)showSatellitePage(false);
+        else super.onBackPressed();
     }
 
     private void toggleSection(View section, Button button, String title) {

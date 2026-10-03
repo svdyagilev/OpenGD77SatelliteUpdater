@@ -238,6 +238,86 @@ final class CodeplugEditDialogs {
         });f.show();
     }
 
+    static void bulkChannels(Activity a,CodeplugModel model,List<Integer> ids,Commit commit){
+        Form f=new Form(a,"Массовая правка: "+ids.size()+" каналов",values->{
+            Map<String,String> patch=new LinkedHashMap<>(values);
+            boolean rx="1".equals(patch.remove("setRxTone")),tx="1".equals(patch.remove("setTxTone"));
+            if(!rx)patch.remove("rxTone");else if(!patch.containsKey("rxTone"))patch.put("rxTone","нет");
+            if(!tx)patch.remove("txTone");else if(!patch.containsKey("txTone"))patch.put("txTone","нет");
+            patch.values().removeAll(Collections.singleton(""));
+            commit.apply(snapshot->ChannelBatch.update(snapshot,ids,patch));
+        });
+        f.label("Мощность — для всех выбранных. Субтоны — только FM. Color Code и TS — только DMR. Режим каналов сохраняется.");
+        f.choice("power","Мощность","",new String[]{"","0","1","2","3","4","5","6","7","8","9","10"},
+            new String[]{"Не менять","От общей настройки","100 мВт","250 мВт","500 мВт","750 мВт","1 Вт","5 Вт","10 Вт","25 Вт","40 Вт","+Вт−"});
+        f.check("setRxTone","Изменить субтон приёма FM",false);
+        f.tone("rxTone","Новый субтон приёма",new CodeplugModel.Tone(CodeplugModel.Tone.Type.NONE,0,0xffff));
+        f.check("setTxTone","Изменить субтон передачи FM",false);
+        f.tone("txTone","Новый субтон передачи",new CodeplugModel.Tone(CodeplugModel.Tone.Type.NONE,0,0xffff));
+        String[] cc=new String[17],ccLabels=new String[17];cc[0]="";ccLabels[0]="Не менять";
+        for(int code=0;code<16;code++){cc[code+1]=""+code;ccLabels[code+1]=""+code;}
+        f.choice("cc","Color Code DMR","",cc,ccLabels);
+        f.choice("ts","Таймслот DMR","",new String[]{"","1","2"},new String[]{"Не менять","TS1","TS2"});f.show();
+    }
+
+    static void series(Activity a,CodeplugModel.Channel template,Commit commit){
+        Form f=new Form(a,"Серия по шаблону: "+template.name,values->{
+            int count=(int)CodeplugEditor.number(values.get("count"),1,1024,"Число каналов");
+            long rx=CodeplugEditor.frequency(values.get("rx")),tx=CodeplugEditor.frequency(values.get("tx"));
+            long step;
+            try{step=new java.math.BigDecimal(values.get("spacing").replace(',','.')).multiply(new java.math.BigDecimal("1000")).longValueExact();}
+            catch(RuntimeException e){throw new IllegalArgumentException("Шаг частоты: число в кГц");}
+            final long spacing=step;
+            commit.apply(snapshot->ChannelBatch.series(snapshot,template.index,values.get("prefix"),count,rx,tx,spacing));
+        });
+        // All inputs are required even if they match the initial values.
+        f.creating=true;
+        f.label("Настройки исходного канала сохраняются. Имена: префикс + 1, 2, …; RX и TX увеличиваются на один и тот же шаг.");
+        f.text("prefix","Префикс имени (с номером не более 16 символов)","Канал ",false);
+        f.text("count","Число новых каналов","1",true);
+        f.text("rx","Начальная частота приёма, МГц",ChannelBatch.mhz(template.rxHz),false);
+        f.text("tx","Начальная частота передачи, МГц",ChannelBatch.mhz(template.txHz),false);
+        f.text("spacing","Шаг серии, кГц (0 — одинаковые частоты)","12.5",false);f.show();
+    }
+
+    static void zoneOrder(Activity a,CodeplugModel.Zone zone,CodeplugModel model,Commit commit){
+        List<Integer> order=new ArrayList<>(zone.channelIndices);
+        LinearLayout body=new LinearLayout(a);body.setOrientation(LinearLayout.VERTICAL);
+        ListView list=new ListView(a);body.addView(list,new LinearLayout.LayoutParams(-1,(int)(a.getResources().getDisplayMetrics().density*280)));
+        TextView help=new TextView(a);help.setText("Нажмите канал: переместить вверх/вниз или удалить из зоны. Сами каналы не удаляются.");body.addView(help);
+        Runnable refresh=()->{
+            List<String> labels=new ArrayList<>();for(int id:order){String name="#"+id;for(CodeplugModel.Channel c:model.channels)if(c.index==id)name+=" · "+c.name;labels.add(name);}
+            list.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_list_item_1,labels));
+        };refresh.run();
+        list.setOnItemClickListener((parent,view,position,id)->new AlertDialog.Builder(a).setTitle("Канал #"+order.get(position))
+            .setItems(new String[]{"Вверх","Вниз","Убрать из зоны"},(dialog,which)->{
+                if(which==0&&position>0)Collections.swap(order,position,position-1);
+                else if(which==1&&position+1<order.size())Collections.swap(order,position,position+1);
+                else if(which==2)order.remove(position);
+                refresh.run();
+            }).show());
+        AlertDialog dialog=new AlertDialog.Builder(a).setTitle("Порядок каналов: "+zone.name).setView(body)
+            .setNeutralButton("Добавить каналы",null).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",null).create();
+        dialog.setOnShowListener(v->{
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(button->{
+                List<Integer> additions=new ArrayList<>();List<CodeplugModel.Channel> available=new ArrayList<>();
+                for(CodeplugModel.Channel c:model.channels)if(!order.contains(c.index))available.add(c);
+                String[] names=new String[available.size()];for(int i=0;i<names.length;i++)names[i]="#"+available.get(i).index+" · "+available.get(i).name;
+                AlertDialog picker=new AlertDialog.Builder(a).setTitle("Добавить в конец зоны").setMultiChoiceItems(names,new boolean[names.length],(d,which,on)->{
+                    int channel=available.get(which).index;if(on)additions.add(channel);else additions.remove((Integer)channel);
+                }).setNegativeButton("Отмена",null).setPositiveButton("Добавить",null).create();
+                picker.setOnShowListener(x->picker.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button2->{
+                    if(order.size()+additions.size()>80){new AlertDialog.Builder(a).setMessage("В зоне не более 80 каналов").setPositiveButton("OK",null).show();return;}
+                    order.addAll(additions);refresh.run();picker.dismiss();
+                }));picker.show();
+            });
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{try{
+                Map<String,String> values=new LinkedHashMap<>();values.put("members",CodeplugRecords.join(order));
+                commit.apply(snapshot->CodeplugEditor.zone(snapshot,zone.index,values));dialog.dismiss();
+            }catch(Exception e){new AlertDialog.Builder(a).setMessage(e.getMessage()).setPositiveButton("OK",null).show();}});
+        });dialog.show();
+    }
+
     static void radio(Activity a,CodeplugModel m,Commit commit){
         Form f=new Form(a,"Настройки рации",v->commit.apply(s->CodeplugLists.radio(s,v)));
         f.choice("vox","Чувствительность VOX",""+m.general.voxSense,numbers(1,10),numbers(1,10));f.show();

@@ -83,7 +83,7 @@ final class CodeplugIntegrity {
         add(out,owner,CodeplugRecords.Kind.DMR,ByteUtil.u16le(b,o+46));
         add(out,owner,CodeplugRecords.Kind.GROUP,b[o+43]&255);add(out,owner,CodeplugRecords.Kind.APRS,b[o+45]&255);
     }
-    private static List<Edge> edges(CodeplugSnapshot s){
+    static List<Edge> edges(CodeplugSnapshot s){
         List<Edge> out=new ArrayList<>();byte[][] blocks=CodeplugProject.blocks(s);
         for(int id=1;id<=1024;id++)if(CodeplugRecords.occupied(s,CodeplugRecords.Kind.CHANNEL,id))channelEdges(out,"Канал #"+id,blocks[CodeplugRecords.block(CodeplugRecords.Kind.CHANNEL,id)],CodeplugRecords.offset(CodeplugRecords.Kind.CHANNEL,id));
         for(int v=0;v<2;v++)channelEdges(out,"VFO "+(v==0?"A":"B"),s.bootAndVfos,0x78+v*56);
