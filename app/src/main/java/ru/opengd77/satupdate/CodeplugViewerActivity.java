@@ -20,7 +20,7 @@ import java.util.Locale;
 public class CodeplugViewerActivity extends ScreenActivity {
     private CodeplugModel model;
     private int activeCategory;
-    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604;
+    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604, COMPARE_PROJECT = 605, RESTORE_BACKUP = 606;
     private final java.util.concurrent.ExecutorService toolsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private byte[] pendingExport;
     private android.app.ProgressDialog toolsProgress;
@@ -507,10 +507,10 @@ public class CodeplugViewerActivity extends ScreenActivity {
                     if(changedBytes==0){new AlertDialog.Builder(this).setMessage("Изменений нет. Проверьте выбранные поля и режимы каналов.").setPositiveButton("OK",null).show();return;}
                     String summary="Будет добавлено каналов: "+(after.channels.size()-before.channels.size())+"\nБудет добавлено зон: "+(after.zones.size()-before.zones.size())
                             +"\nИзменено байтов: "+changedBytes+"\n\nПравки будут применены к проекту на телефоне и отменяются одним шагом через меню «Проект».";
-                    new AlertDialog.Builder(this).setTitle(title).setMessage(summary).setNegativeButton("Отмена",null).setPositiveButton("Применить к проекту",(dialog,which)->{
+                    ProjectReportDialogs.show(this,title,summary,new ProjectDiff(base.working,next.working),()->{
                         try{if(CodeplugSession.project!=base)throw new IllegalStateException("Проект изменился. Подготовьте операцию заново.");installProject(next);}
                         catch(Exception e){problem(e);}
-                    }).show();
+                    });
                 });
             }catch(Exception e){runOnUiThread(()->{if(cancelled.get()||isFinishing()||isDestroyed())return;progress.dismiss();problem(e);});}
         });progress.setOnCancelListener(dialog->{cancelled.set(true);task.cancel(true);});
@@ -679,7 +679,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void projectMenu() {
         String[] items = {"Открыть файл проекта", "Сохранить копию проекта в файл",
-                "Отменить последнее изменение", "Вернуть исходное чтение", "Изменения по блокам"};
+                "Отменить последнее изменение", "Вернуть исходное чтение", "Список изменений проекта", "Сравнить с другим проектом", "Проверить проект", "История версий", "Восстановить из резервной копии"};
         new AlertDialog.Builder(this).setTitle("Проект (.ogcproj)").setItems(items, (dialog, which) -> {
             try {
                 if (which == 0) {
@@ -690,6 +690,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
                     } else openProject();
                     return;
                 }
+                if(which==7){showHistory();return;}
                 CodeplugProject project = CodeplugSession.project;
                 if (project == null) throw new IllegalArgumentException("Сначала откройте проект или прочитайте радиостанцию");
                 if (which == 1) {
@@ -709,21 +710,73 @@ public class CodeplugViewerActivity extends ScreenActivity {
                             .setNegativeButton("Отмена", null).setPositiveButton("Вернуть", (d,w) -> {
                                 try { installProject(project.reset()); } catch (Exception e) { problem(e); }
                             }).show();
-                } else {
-                    String[] names = {"Сведения о станции", "Общие настройки", "DTMF", "APRS", "Сканирование",
-                            "Контакты DTMF", "Каналы 1–128", "Загрузочный экран / VFO", "Зоны", "Каналы 129–1024",
-                            "Контакты DMR", "Группы приёма", "Дополнительные настройки"};
-                    byte[][] before = CodeplugProject.blocks(project.original), after = CodeplugProject.blocks(project.working);
-                    StringBuilder text = new StringBuilder();
-                    for (int i=0; i<before.length; i++) {
-                        int count=0; for (int j=0; j<before[i].length; j++) if (before[i][j]!=after[i][j]) count++;
-                        if (count>0) text.append(names[i]).append(": ").append(count).append(" байт\n");
-                    }
-                    new AlertDialog.Builder(this).setTitle("Изменения проекта")
-                            .setMessage(text.length()==0 ? "Изменений нет" : text.toString()).setPositiveButton("OK", null).show();
+                } else if(which==4){
+                    showProjectChanges();
+                } else if(which==5){
+                    startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),COMPARE_PROJECT);
+                } else if(which==6){
+                    ProjectCheck.Report check=ProjectCheck.inspect(project,project.working);
+                    new AlertDialog.Builder(this).setTitle("Проверка проекта").setMessage(check.text()).setPositiveButton("Закрыть",null).show();
+                } else if(which==7){
+                    showHistory();
+                } else if(which==8){
+                    backupMenu();
+
                 }
             } catch (Exception e) { problem(e); }
         }).show();
+    }
+
+    private void showProjectChanges(){
+        CodeplugProject p=CodeplugSession.project;
+        ProjectReportDialogs.show(this,"Изменения проекта","Исходное чтение → рабочая копия",new ProjectDiff(p.original,p.working),null);
+    }
+    private void compareProject(CodeplugProject other,String label){
+        CodeplugProject current=CodeplugSession.project;
+        if(current==null){problem(new IllegalStateException("Сначала откройте текущий проект"));return;}
+        String identity=ProjectRecovery.sameRadio(current.identity,other.identity)?"Модель и прошивка совпадают":"Модель или прошивка отличаются";
+        ProjectReportDialogs.show(this,"Сравнение проектов","Текущий проект → "+label+"\n"+identity,new ProjectDiff(current.working,other.working),null);
+    }
+    private void showHistory(){
+        java.io.File[] versions=CodeplugProjectStore.versions(this);
+        if(versions.length==0&&CodeplugSession.project==null){problem(new IllegalArgumentException("Сохранённых версий пока нет"));return;}
+        if(versions.length==0){try{CodeplugProjectStore.save(this,CodeplugSession.project);versions=CodeplugProjectStore.versions(this);}catch(Exception e){problem(e);return;}}
+        final java.io.File[] files=versions;
+        String[] labels=new String[files.length];
+        for(int i=0;i<files.length;i++){
+            String stamp=files[i].getName().substring(0,13);
+            labels[i]=new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss",Locale.getDefault()).format(new java.util.Date(Long.parseLong(stamp)))+" · "+(i+1);
+        }
+        new AlertDialog.Builder(this).setTitle("Последние 30 сохранённых версий").setItems(labels,(dialog,which)->{
+            try(java.io.InputStream in=new java.io.FileInputStream(files[which])){
+                CodeplugProject revision=CodeplugProject.read(in);
+                new AlertDialog.Builder(this).setTitle(labels[which]+" · "+revision.model().general.radioName)
+                    .setItems(new String[]{"Сравнить с текущим проектом","Открыть эту версию","Экспортировать версию"},(d,action)->{
+                        try{
+                            if(action==0)compareProject(revision,labels[which]);
+                            else if(action==1){
+                                CodeplugProject base=CodeplugSession.project;
+                                ProjectReportDialogs.show(this,"Открыть сохранённую версию", "Рабочий проект будет заменён. Перед записью проверяется совпадение рации с исходным чтением этой версии.",new ProjectDiff(base==null?revision.original:base.working,revision.working),()->{
+                                    try{if(CodeplugSession.project!=base)throw new IllegalStateException("Проект изменился");installProject(revision);}catch(Exception e){problem(e);}
+                                });
+                            }else{
+                                pendingExport=revision.encode();startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,files[which].getName()),SAVE_PROJECT);
+                            }
+                        }catch(Exception e){problem(e);}
+                    }).show();
+            }catch(Exception e){problem(e);}
+        }).setNegativeButton("Закрыть",null).show();
+    }
+    private void backupMenu(){
+        new AlertDialog.Builder(this).setTitle("Восстановление codeplug").setItems(new String[]{"Выбрать копию на телефоне","Открыть ZIP-файл резервной копии"},(dialog,which)->{
+            if(which==1){startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),RESTORE_BACKUP);return;}
+            java.io.File[] files=new java.io.File(getFilesDir(),"codeplug-backups").listFiles((dir,name)->name.endsWith(".zip"));
+            if(files==null||files.length==0){problem(new IllegalArgumentException("Резервных копий записи codeplug пока нет"));return;}
+            java.util.Arrays.sort(files,(a,b)->b.getName().compareTo(a.getName()));String[] names=new String[files.length];for(int i=0;i<files.length;i++)names[i]=files[i].getName();
+            new AlertDialog.Builder(this).setTitle("Копии записи codeplug").setItems(names,(d,index)->reviewOperation("Восстановление из "+names[index],base->{
+                try(java.io.InputStream in=new java.io.FileInputStream(files[index])){return ProjectRecovery.read(in).restore(base);}
+            })).setNegativeButton("Отмена",null).show();
+        }).setNegativeButton("Отмена",null).show();
     }
 
     private void openProject() {
@@ -737,7 +790,14 @@ public class CodeplugViewerActivity extends ScreenActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) { pendingExport=null; return; }
         try {
-            if (requestCode == OPEN_PROJECT) {
+            if(requestCode==COMPARE_PROJECT){
+                try(java.io.InputStream in=getContentResolver().openInputStream(data.getData())){compareProject(CodeplugProject.read(in),"выбранный файл");}
+            }else if(requestCode==RESTORE_BACKUP){
+                final android.net.Uri uri=data.getData();
+                reviewOperation("Восстановление из резервной копии",base->{
+                    try(java.io.InputStream in=getContentResolver().openInputStream(uri)){return ProjectRecovery.read(in).restore(base);}
+                });
+            }else if (requestCode == OPEN_PROJECT) {
                 try (java.io.InputStream in = getContentResolver().openInputStream(data.getData())) {
                     installProject(CodeplugProject.read(in));
                 }

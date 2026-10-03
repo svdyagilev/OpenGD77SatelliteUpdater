@@ -54,6 +54,12 @@ final class CodeplugWritePlan {
         return true;
     }
     String summary(){StringBuilder s=new StringBuilder();for(int i=0;i<NAMES.length;i++)if(selected[i]&&counts[i]>0)s.append(NAMES[i]).append(": ").append(counts[i]).append(" байт\n");return s.toString();}
+    CodeplugSnapshot effectiveSnapshot(){
+        CodeplugSnapshot effective=CodeplugProject.copy(project.original);byte[][] target=CodeplugProject.blocks(effective);
+        for(Map.Entry<Integer,Byte> change:changes.entrySet())for(int block=0;block<target.length;block++){
+            int offset=change.getKey()-ADDRESS[block];if(offset>=0&&offset<target[block].length){target[block][offset]=change.getValue();break;}
+        }return effective;
+    }
     CodeplugProject completedProject(){return project.acceptChanges(changes);}
 
     interface Memory {

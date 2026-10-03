@@ -35,6 +35,12 @@ public class CodeplugWriteActivity extends ScreenActivity {
         ScrollView choices=new ScrollView(this);LinearLayout options=new LinearLayout(this);options.setOrientation(LinearLayout.VERTICAL);choices.addView(options);
         for(int i=0;i<sections.length;i++){sections[i]=new CheckBox(this);options.addView(sections[i]);}
         body.addView(choices,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout inspection=new LinearLayout(this);body.addView(inspection);
+        Button preview=new Button(this);preview.setText("Что будет записано");inspection.addView(preview,new LinearLayout.LayoutParams(0,-2,1));
+        Button audit=new Button(this);audit.setText("Проверить");inspection.addView(audit,new LinearLayout.LayoutParams(0,-2,1));
+        preview.setOnClickListener(v->{if(!busy)previewSelected();});audit.setOnClickListener(v->{if(!busy&&project!=null){
+            try{CodeplugWritePlan selected=selectedPlan();showCheck(ProjectCheck.inspect(project,selected.effectiveSnapshot()));}catch(Exception e){log(e.getMessage());}
+        }});
         write=new Button(this);write.setText("Записать выбранные разделы");body.addView(write);
         Button backup=new Button(this);backup.setText("Сохранить последнюю резервную копию");body.addView(backup);
         ScrollView scroll=new ScrollView(this);status=new TextView(this);status.setTextSize(15);scroll.addView(status);
@@ -62,12 +68,23 @@ public class CodeplugWriteActivity extends ScreenActivity {
     private void confirm(){
         if(busy||succeeded||CodeplugWriteBackup.pending(this))return;
         try{
-            boolean[] selected=new boolean[sections.length];for(int i=0;i<selected.length;i++)selected[i]=sections[i].isChecked();
-            plan=new CodeplugWritePlan(project,selected);
+            plan=selectedPlan();
+            ProjectCheck.Report check=ProjectCheck.inspect(project,plan.effectiveSnapshot());
+            if(!check.errors.isEmpty()){showCheck(check);return;}
             if(plan.changes.isEmpty())throw new IOException("Выберите раздел с изменениями");
             new AlertDialog.Builder(this).setTitle("Записать в MD-9600?")
-                .setMessage(plan.summary()+"\nВсего: "+plan.changes.size()+" изменённых байт.\nПроверьте, что подключена нужная рация.")
-                .setNegativeButton("Отмена",null).setPositiveButton("Записать",(d,w)->begin()).show();
+                .setMessage(plan.summary()+"\nВсего: "+plan.changes.size()+" изменённых байт.\nПроверьте, что подключена нужная рация."+(check.warnings.isEmpty()?"":"\n\n"+check.text()))
+                .setNeutralButton("Список изменений",(d,w)->previewSelected()).setNegativeButton("Отмена",null).setPositiveButton("Записать",(d,w)->begin()).show();
+        }catch(Exception e){log(e.getMessage());}
+    }
+    private CodeplugWritePlan selectedPlan(){
+        boolean[] selected=new boolean[sections.length];for(int i=0;i<selected.length;i++)selected[i]=sections[i].isChecked();return new CodeplugWritePlan(project,selected);
+    }
+    private void showCheck(ProjectCheck.Report report){new AlertDialog.Builder(this).setTitle("Проверка выбранных изменений").setMessage(report.text()).setPositiveButton("Закрыть",null).show();}
+    private void previewSelected(){
+        if(project==null)return;try{
+            CodeplugWritePlan selected=selectedPlan();
+            ProjectReportDialogs.show(this,"Будет отправлено в радиостанцию","Только выбранные разделы. Невыбранные правки остаются в проекте.",new ProjectDiff(project.original,selected.effectiveSnapshot()),null);
         }catch(Exception e){log(e.getMessage());}
     }
     private void begin(){
