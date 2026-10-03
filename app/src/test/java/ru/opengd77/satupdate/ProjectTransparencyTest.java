@@ -55,6 +55,24 @@ public class ProjectTransparencyTest {
         assertTrue(CodeplugProject.equal(after.original,restored.original));assertTrue(CodeplugProject.equal(after.working,restored.undo().working));
         new CodeplugWritePlan(restored,CodeplugWritePlan.allSections());
     }
+    @Test public void undoCreationViaBackupUsesValidatedDeletionAndProtectsLaterEdits()throws Exception{
+        CodeplugProject p=ChannelBatchTest.clean(),added=p.edit(s->ChannelBatch.copyChannel(s,1,"Копия",Collections.emptyMap()));
+        CodeplugProject after=new CodeplugWritePlan(added,CodeplugWritePlan.allSections()).completedProject();
+        ProjectRecovery recovery=ProjectRecovery.read(new ByteArrayInputStream(backup(added,after)));
+        CodeplugProject restored=recovery.restore(after);assertEquals(4,restored.model().channels.size());
+        new CodeplugWritePlan(restored,CodeplugWritePlan.allSections());
+        CodeplugProject later=after.edit(s->CodeplugEditor.channel(s,2,fields("power","9")));
+        try{recovery.restore(later);fail();}catch(IllegalArgumentException expected){}
+        assertEquals(9,ChannelBatch.channel(later.working,2).powerSetting);
+    }
+    @Test public void recoveryRejectsConflictingMultibyteFieldInsteadOfProducingHybridId()throws Exception{
+        CodeplugProject p=ChannelBatchTest.clean(),edited=p.edit(s->CodeplugEditor.general(s,fields("id","4019999")));
+        CodeplugProject after=new CodeplugWritePlan(edited,CodeplugWritePlan.allSections()).completedProject();
+        ProjectRecovery recovery=ProjectRecovery.read(new ByteArrayInputStream(backup(edited,after)));
+        CodeplugProject later=after.edit(s->CodeplugEditor.general(s,fields("id","5019999")));
+        try{recovery.restore(later);fail();}catch(IllegalArgumentException expected){}
+        assertEquals(5019999,later.model().general.dmrId);
+    }
     @Test public void recoveryRejectsWrongFirmwareMissingProjectsAndCorruption()throws Exception{
         CodeplugProject p=ChannelBatchTest.clean(),edited=p.edit(s->CodeplugEditor.channel(s,1,fields("power","9")));
         CodeplugProject after=new CodeplugWritePlan(edited,CodeplugWritePlan.allSections()).completedProject();
