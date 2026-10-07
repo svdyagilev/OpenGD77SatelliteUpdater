@@ -7,3 +7,7 @@ The provided OpenGD77 RUS Windows CPS defines a 64-byte `RadioSettings` transfer
 The supplied CPS write-button handler and worker do not implement a working settings transfer. Android therefore has no enabled master-settings write control. Master settings are not the codeplug's per-channel power/squelch, nor the 40-byte general/VOX block. Change Master on the radio until a write protocol for the user's firmware has been verified. No guessed storage offsets or commands are used.
 
 The user confirmed successful Master power and squelch reads on their MD-9600 RUS firmware with v0.8.12. Writing remains unsupported.
+
+## Write investigation
+
+The 2026-10-08 investigation found a buffer mismatch in the X/0C handler of the supplied MD-9600 binary. Actual handler emulation reproduced a corrupted settings marker. Master writes remain disabled. See [binary evidence and verification](MASTER_WRITE_PROTOCOL.md). The installed radio binary was not independently compared.
