@@ -16,6 +16,7 @@ final class CodeplugIntegrity {
         Arrays.fill(mask[2],48,78,(byte)255);Arrays.fill(mask[2],80,110,(byte)255);Arrays.fill(mask[2],112,119,(byte)255);
         mask[7][0]=(byte)255;Arrays.fill(mask[7],0x28,0x48,(byte)255);
         channelMask(mask[7],0x78);channelMask(mask[7],0xb0);
+        BootImage.permit(p,mask[12]);
         CodeplugModel model=p.model();
         for(CodeplugRecords.Kind k:CodeplugRecords.Kind.values())for(int id=1;id<=CodeplugRecords.limit(k);id++){
             int block=CodeplugRecords.block(k,id),o=CodeplugRecords.offset(k,id),size=CodeplugRecords.size(k);

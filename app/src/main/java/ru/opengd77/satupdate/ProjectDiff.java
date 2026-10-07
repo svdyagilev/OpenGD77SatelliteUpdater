@@ -53,7 +53,7 @@ final class ProjectDiff {
         summary(a,b,2,0,a[2].length,"Настройки DTMF",fields(old.dtmfSettings,now.dtmfSettings));
         summary(a,b,7,0,0x78,"Загрузочный экран и команды",fields(old.boot,now.boot));
         for(int v=0;v<2;v++)summary(a,b,7,0x78+56*v,56,"VFO "+(v==0?"A":"B"),fields(old.vfos.get(v),now.vfos.get(v)));
-        summary(a,b,12,0,a[12].length,"Спутники и дополнительные настройки","Спутников: "+old.satellites.size()+" → "+now.satellites.size());
+        summary(a,b,12,0,a[12].length,"Изображение заставки, спутники и дополнительные настройки","Изображение заставки: "+(BootImage.payload(before.additionalSettings)==null?"нет":"есть")+" → "+(BootImage.payload(after.additionalSettings)==null?"нет":"есть")+"\nСпутников: "+old.satellites.size()+" → "+now.satellites.size());
         String[] blocks={"Сведения о станции","Общие настройки","DTMF","APRS","Сканирование","Контакты DTMF","Каналы 1–128","Загрузочный экран / VFO","Зоны","Каналы 129–1024","Контакты DMR","Группы приёма","Дополнительные настройки"};
         for(int block=0;block<a.length;block++){int unlisted=0;for(int i=0;i<a[block].length;i++)if(!covered[block][i]&&a[block][i]!=b[block][i])unlisted++;
             if(unlisted>0)changes.add(new Change("Другие данные: "+blocks[block],"Изменено "+unlisted+" байт вне перечисленных записей (например, свободные слоты или служебные данные)."));}

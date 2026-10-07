@@ -70,6 +70,7 @@ final class ProjectRecovery {
             for(int off=12;off<32;off+=2)restoreRange(target,a,b,covered,7,off,2,"Команда DMR");
             restoreRange(target,a,b,covered,7,0x28,16,"Строка загрузки 1");restoreRange(target,a,b,covered,7,0x38,16,"Строка загрузки 2");
             for(int v=0;v<2;v++)restoreRange(target,a,b,covered,7,0x78+56*v,56,"VFO");
+            restoreRange(target,a,b,covered,12,0,a[12].length,"Изображение заставки и дополнительные настройки");
             for(int block=0;block<a.length;block++)for(int i=0;i<a[block].length;i++)if(!covered[block][i])restoreRange(target,a,b,covered,block,i,1,"Дополнительные данные");
         });
         CodeplugIntegrity.masks(result);CodeplugIntegrity.links(result.original,result.working);return result;

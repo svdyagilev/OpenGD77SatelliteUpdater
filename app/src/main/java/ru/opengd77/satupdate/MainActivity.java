@@ -145,11 +145,12 @@ public class MainActivity extends ScreenActivity {
             public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
 
-        try (InputStream in = getAssets().open("Satellites.txt")) {
-            configs = SatelliteConfigParser.parse(in);
+        try {
+            configs = SatelliteConfigStore.load(this);
             log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
             log("Satellite module: конфигураций Satellites.txt: " + configs.size());
         } catch (Exception e) {
+            configs=new ArrayList<>();
             log("Ошибка Satellites.txt: " + e.getMessage());
         }
 
@@ -183,7 +184,11 @@ public class MainActivity extends ScreenActivity {
         else registerReceiver(usbReceiver, f);
 
         findViewById(R.id.satellitePageButton).setOnClickListener(v -> showSatellitePage(true));
+        findViewById(R.id.satelliteConfigsButton).setOnClickListener(v->editSatelliteConfigs());
         findViewById(R.id.satelliteBackButton).setOnClickListener(v -> showSatellitePage(false));
+        showSatellitePage(false);
+        if(getIntent().getBooleanExtra("satellitePage",false))showSatellitePage(true);
+        if(getIntent().getBooleanExtra("editSatellites",false)&&savedInstanceState==null)editSatelliteConfigs();
         if(savedInstanceState!=null)showSatellitePage(savedInstanceState.getBoolean("satellitePage",false));
         updateButtons();
     }
@@ -210,9 +215,12 @@ public class MainActivity extends ScreenActivity {
         }
     }
 
+    private void editSatelliteConfigs(){SatelliteConfigDialogs.show(this,configs,next->{if(radioBusy)throw new IllegalStateException("Дождитесь завершения операции с рацией");SatelliteConfigStore.save(this,next);configs=next;prepared=null;tleByCatalog=null;updatePlan=null;applyButtonState();tleSummaryText.setText("Список спутников изменён. Загрузите свежие TLE.");});}
     private void showSatellitePage(boolean open) {
         findViewById(R.id.mainPage).setVisibility(open?View.GONE:View.VISIBLE);
         findViewById(R.id.satellitePage).setVisibility(open?View.VISIBLE:View.GONE);
+        diagnosticsToggleButton.setVisibility(open?View.VISIBLE:View.GONE);
+        if(!open)diagnosticsContainer.setVisibility(View.GONE);
         android.widget.ScrollView scroll=findViewById(R.id.mainScroll);
         scroll.post(()->scroll.scrollTo(0,0));
     }
@@ -633,6 +641,7 @@ public class MainActivity extends ScreenActivity {
     }
 
     private void applyButtonState() {
+        findViewById(R.id.satelliteConfigsButton).setEnabled(!radioBusy);
         findViewById(R.id.editorProjectButton).setEnabled(!radioBusy);
         autoUpdateButton.setEnabled(!radioBusy);
         connectButton.setEnabled(!radioBusy);

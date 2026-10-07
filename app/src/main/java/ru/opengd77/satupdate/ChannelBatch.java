@@ -41,6 +41,19 @@ final class ChannelBatch {
             copyChannel(s,source,prefix+(i+1),changes);
         }
     }
+    static void configuredSeries(CodeplugSnapshot s,int source,Map<String,String> values){
+        int count=(int)CodeplugEditor.number(values.get("count"),1,1024,"Количество каналов");
+        String spacing=values.get("spacing");if(!Arrays.asList("0","2.5","5","6.25","10","12.5","25","30","50").contains(spacing))throw new IllegalArgumentException("Выберите шаг серии из списка");
+        long step=new BigDecimal(spacing).multiply(BigDecimal.valueOf(1000)).longValueExact();
+        long rx=CodeplugEditor.frequency(values.get("rx")),tx=CodeplugEditor.frequency(values.get("tx"));String name=values.get("name");
+        if(name==null||name.trim().isEmpty())throw new IllegalArgumentException("Укажите имя серии");
+        for(int n=0;n<count;n++){
+            if(Thread.currentThread().isInterrupted())throw new IllegalStateException("Операция отменена");
+            Map<String,String> fields=new LinkedHashMap<>(values);fields.remove("count");fields.remove("spacing");
+            fields.put("name",name+(n+1));fields.put("rx",mhz(Math.addExact(rx,Math.multiplyExact(step,n))));fields.put("tx",mhz(Math.addExact(tx,Math.multiplyExact(step,n))));
+            if(source>0)copyChannel(s,source,fields.get("name"),fields);else CodeplugRecords.create(s,CodeplugRecords.Kind.CHANNEL,CodeplugRecords.next(s,CodeplugRecords.Kind.CHANNEL),fields);
+        }
+    }
     static void update(CodeplugSnapshot s,List<Integer> ids,Map<String,String> fields){
         if(ids.isEmpty()||fields.isEmpty())throw new IllegalArgumentException("Выберите каналы и хотя бы одно поле");
         for(String key:fields.keySet())if(!Arrays.asList("power","rxTone","txTone","cc","ts").contains(key))

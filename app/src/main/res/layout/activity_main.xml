@@ -17,6 +17,7 @@
             <Button android:id="@+id/satelliteBackButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="‹  На главный экран" android:textAllCaps="false" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Спутники / Keps" android:textStyle="bold" android:textSize="20sp" />
             <TextView android:id="@+id/tleSummaryText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="8dp" android:paddingBottom="8dp" android:text="TLE ещё не загружены" />
+            <Button android:id="@+id/satelliteConfigsButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Добавить / редактировать спутники" android:textAllCaps="false" />
             <Button android:id="@+id/autoUpdateButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Проверить и обновить Keps" android:textAllCaps="false" />
             <Button android:id="@+id/advancedToggleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Источник TLE и ручные операции ▾" android:textAllCaps="false" />
             <LinearLayout android:id="@+id/advancedContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
@@ -30,7 +31,7 @@
             </LinearLayout>
         </LinearLayout>
         <TextView android:id="@+id/operationSummaryText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="12dp" android:paddingBottom="8dp" android:text="Готово" />
-        <Button android:id="@+id/diagnosticsToggleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Журнал операций ▾" android:textAllCaps="false" />
+        <Button android:visibility="gone" android:id="@+id/diagnosticsToggleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Журнал операций ▾" android:textAllCaps="false" />
         <LinearLayout android:id="@+id/diagnosticsContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
             <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:fontFamily="monospace" android:text="Готово." android:textIsSelectable="true" android:textSize="12sp" />
         </LinearLayout>

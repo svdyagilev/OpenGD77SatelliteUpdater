@@ -10,8 +10,8 @@ android {
         applicationId "ru.opengd77.satupdate"
         minSdk 23
         targetSdk 35
-        versionCode 36
-        versionName "0.8.9"
+        versionCode 37
+        versionName "0.8.10"
 
         testInstrumentationRunner "android.test.InstrumentationTestRunner"
     }

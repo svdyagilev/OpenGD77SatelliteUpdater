@@ -20,7 +20,7 @@ import java.util.Locale;
 public class CodeplugViewerActivity extends ScreenActivity {
     private CodeplugModel model;
     private int activeCategory;
-    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604, COMPARE_PROJECT = 605, RESTORE_BACKUP = 606;
+    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604, COMPARE_PROJECT = 605, RESTORE_BACKUP = 606, OPEN_BOOT_IMAGE = 607;
     private final java.util.concurrent.ExecutorService toolsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private byte[] pendingExport;
     private android.app.ProgressDialog toolsProgress;
@@ -58,14 +58,14 @@ public class CodeplugViewerActivity extends ScreenActivity {
         });
         findViewById(R.id.editGeneralButton).setOnClickListener(v -> {
             if (model == null) return;
-            if (activeCategory == 10) CodeplugEditDialogs.boot(this, model.boot, this::commitEdit);
+            if (activeCategory == 10) CodeplugEditDialogs.boot(this, model.boot, this::commitEdit,this::pickBootImage);
             else if(activeCategory==9)CodeplugEditDialogs.dtmfSettings(this,model.dtmfSettings,this::commitEdit);
             else if(activeCategory==14)CodeplugEditDialogs.bands(this,model,this::commitEdit);
             else if(activeCategory==16)CodeplugEditDialogs.radio(this,model,this::commitEdit);
             else CodeplugEditDialogs.general(this, model.general, this::commitEdit);
         });
         findViewById(R.id.addRecordButton).setOnClickListener(v -> {
-            try { if (creationKind()!=null && CodeplugSession.project!=null)
+            try { if(activeCategory==1){addChannelMenu();return;} if (creationKind()!=null && CodeplugSession.project!=null)
                 CodeplugEditDialogs.create(this,CodeplugSession.project,creationKind(),this::commitEdit);
             } catch(Exception e) { problem(e); }
         });
@@ -128,15 +128,24 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void editorMenu() {
         if(selectingChannels){channelSelectionMenu();return;}
-        String[] items={"Проект: открыть, сохранить, отменить","Записать в радиостанцию","Инструменты каналов и зон"};
-        new AlertDialog.Builder(this).setTitle("Действия").setItems(items,(dialog,which)->{
-            if(which==0)projectMenu();
-            else if(which==1){
-                if(model==null){problem(new IllegalStateException("Сначала откройте или прочитайте проект"));return;}
-                startActivity(new Intent(this,CodeplugWriteActivity.class));finish();
-            }else channelTools();
-        }).show();
+        if(model==null){projectMenu();return;}
+        int root=activeCategory;while(CodeplugNavigation.parent(root)>0)root=CodeplugNavigation.parent(root);
+        if(root==101){channelTools();return;}
+        if(root==103){satelliteMenu();return;}
+        if(root==102){contactsMenu();return;}
+        projectMenu();
     }
+    private void writeRadio(){if(model==null){problem(new IllegalArgumentException("Сначала откройте проект"));return;}startActivity(new Intent(this,CodeplugWriteActivity.class));finish();}
+    private void addChannelMenu(){new AlertDialog.Builder(this).setTitle("Добавить каналы").setItems(new String[]{"Добавить 1 канал","Добавить серию каналов"},(d,which)->{
+        try{if(which==0)CodeplugEditDialogs.create(this,CodeplugSession.project,CodeplugRecords.Kind.CHANNEL,this::commitEdit);else CodeplugEditDialogs.newSeries(this,CodeplugSession.project,change->reviewChange("Создание серии каналов",change));}catch(Exception e){problem(e);}
+    }).show();}
+    private void contactsMenu(){new AlertDialog.Builder(this).setTitle("Контакты").setItems(new String[]{"Добавить контакт DMR","Добавить контакт DTMF","Добавить группу приёма","Контакты DMR","Контакты DTMF","Группы приёма","Записать в радиостанцию"},(d,which)->{
+        try{if(which==6)writeRadio();else if(which>=3)showCategory(new int[]{4,8,5}[which-3]);else CodeplugEditDialogs.create(this,CodeplugSession.project,new CodeplugRecords.Kind[]{CodeplugRecords.Kind.DMR,CodeplugRecords.Kind.DTMF,CodeplugRecords.Kind.GROUP}[which],this::commitEdit);}catch(Exception e){problem(e);}
+    }).show();}
+    private void satelliteMenu(){new AlertDialog.Builder(this).setTitle("APRS и спутники").setItems(new String[]{"Список спутников в проекте","Добавить / редактировать спутники","Обновить Keps / загрузить TLE","Добавить настройки APRS","Настройки APRS","Записать в радиостанцию"},(d,which)->{
+        try{if(which==0)showCategory(12);else if(which==1||which==2)startActivity(new Intent(this,MainActivity.class).putExtra("satellitePage",true).putExtra("editSatellites",which==1));else if(which==3)CodeplugEditDialogs.create(this,CodeplugSession.project,CodeplugRecords.Kind.APRS,this::commitEdit);else if(which==4)showCategory(7);else writeRadio();}catch(Exception e){problem(e);}
+    }).show();}
+    private void pickBootImage(){startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),OPEN_BOOT_IMAGE);}
 
     private void clearChannelSelection(){selectingChannels=false;selectedChannels.clear();listView.clearChoices();listView.setChoiceMode(ListView.CHOICE_MODE_NONE);}
     private void toggleChannel(CodeplugModel.Channel channel,int position){
@@ -154,23 +163,29 @@ public class CodeplugViewerActivity extends ScreenActivity {
         summaryText.setText("Выбрано: "+selectedChannels.size()+" • Действия для выбранных");
     }
     private void channelSelectionMenu(){
-        String[] items={"Массовая правка","Добавить в зону","Удалить выбранные каналы","Выбрать все / снять выбор","Завершить выделение"};
+        String[] items={"Массовая правка","Добавить в зону","Удалить выбранные каналы","Выбрать все / снять выбор","Отменить выделение","Записать в радиостанцию"};
         new AlertDialog.Builder(this).setTitle("Выбрано каналов: "+selectedChannels.size()).setItems(items,(d,which)->{
+            if(which==5){writeRadio();return;}
             if(which==4){clearChannelSelection();showCategory(activeCategory);return;}
             if(which==3){if(selectedChannels.size()==visibleObjects.size())selectedChannels.clear();else for(Object item:visibleObjects)selectedChannels.add(((CodeplugModel.Channel)item).index);renderChannelSelection();return;}
             List<Integer> ids=new ArrayList<>(selectedChannels);
             if(ids.isEmpty()){problem(new IllegalArgumentException("Выберите хотя бы один канал"));return;}
             if(which==0)CodeplugEditDialogs.bulkChannels(this,model,ids,change->reviewChange("Массовая правка: "+ids.size()+" каналов",change));
-            else if(which==1)pickRecord(true,item->{CodeplugModel.Zone zone=(CodeplugModel.Zone)item;reviewChange("Добавление в зону «"+zone.name+"»",image->{
-                CodeplugModel.Zone current=(CodeplugModel.Zone)CodeplugRecords.record(OpenGd77CodeplugDecoder.decode(image),CodeplugRecords.Kind.ZONE,zone.index);
-                List<Integer> members=new ArrayList<>(current.channelIndices);for(int id:ids)if(!members.contains(id))members.add(id);
-                java.util.Map<String,String> values=new java.util.LinkedHashMap<>();values.put("members",CodeplugRecords.join(members));CodeplugEditor.zone(image,zone.index,values);
-            });});
+            else if(which==1)chooseTargetZone(ids);
             else new AlertDialog.Builder(this).setTitle("Удалить "+ids.size()+" каналов?").setMessage("Ссылки на выбранные каналы будут очищены. Перед применением откроется список изменений; удаление можно отменить.")
                 .setNegativeButton("Отмена",null).setPositiveButton("Подготовить удаление",(dialog,w)->reviewOperation("Удаление "+ids.size()+" каналов",base->base.edit(image->{for(int id:ids)CodeplugRecords.delete(image,base.original,CodeplugRecords.Kind.CHANNEL,id);}))).show();
         }).show();
     }
 
+    private void chooseTargetZone(List<Integer> ids){
+        String[] labels=new String[model.zones.size()+1];labels[0]="+ Создать новую зону";for(int i=0;i<model.zones.size();i++)labels[i+1]=model.zones.get(i).oneLine();
+        new AlertDialog.Builder(this).setTitle("Добавить выбранные каналы в зону").setItems(labels,(d,which)->{
+            if(which==0){EditText name=new EditText(this);name.setSingleLine(true);name.setHint("Имя новой зоны (до 16 символов)");AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Новая зона").setView(name).setNegativeButton("Отмена",null).setPositiveButton("Создать",null).create();
+                dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{String value=name.getText().toString().trim();if(value.isEmpty()||value.length()>16){name.setError("Имя: 1–16 символов");return;}
+                    reviewChange("Новая зона «"+value+"»",image->{java.util.Map<String,String> fields=new java.util.LinkedHashMap<>();fields.put("name",value);fields.put("members",CodeplugRecords.join(ids));CodeplugRecords.create(image,CodeplugRecords.Kind.ZONE,CodeplugRecords.next(image,CodeplugRecords.Kind.ZONE),fields);});dialog.dismiss();}));dialog.show();
+            }else {int index=model.zones.get(which-1).index;reviewChange("Добавление каналов в зону",image->{CodeplugModel.Zone zone=(CodeplugModel.Zone)CodeplugRecords.record(OpenGd77CodeplugDecoder.decode(image),CodeplugRecords.Kind.ZONE,index);List<Integer> members=new ArrayList<>(zone.channelIndices);for(int id:ids)if(!members.contains(id))members.add(id);java.util.Map<String,String> fields=new java.util.LinkedHashMap<>();fields.put("members",CodeplugRecords.join(members));CodeplugEditor.zone(image,index,fields);});}
+        }).show();
+    }
     private String sectionDetail(int page) {
         switch(page){
             case 100:return "Позывной, параметры рации, загрузочный экран";
@@ -379,6 +394,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
     private void showBoot(List<String> rows) {
         CodeplugModel.BootInfo b = model.boot;
         addText(rows, "Заставка: " + (b.introMode == 1 ? "Текст" : b.introMode == 0 ? "Изображение" : "Код " + b.introMode));
+        if(b.introMode!=1){addText(rows,BootImage.payload(CodeplugSession.project.working.additionalSettings)==null?"Пользовательское изображение отсутствует":"Изображение 128×64 загружено");return;}
         addText(rows, "Строка 1: " + emptyDash(b.line1));
         addText(rows, "Строка 2: " + emptyDash(b.line2));
     }
@@ -462,7 +478,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
             .setItems(actions,(dialog,which)->{
                 if(which==0)CodeplugEditDialogs.edit(this,item,model,this::commitEdit);
                 else if(which==1)copyRecord(item);
-                else if(channel)CodeplugEditDialogs.series(this,(CodeplugModel.Channel)item,change->reviewChange("Создание серии каналов",change));
+                else if(channel)CodeplugEditDialogs.series(this,(CodeplugModel.Channel)item,model,change->reviewChange("Создание серии каналов",change));
                 else CodeplugEditDialogs.zoneOrder(this,(CodeplugModel.Zone)item,model,change->reviewChange("Изменение состава зоны",change));
             }).show();
     }
@@ -485,16 +501,16 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void channelTools() {
         if(model==null||CodeplugSession.project==null){problem(new IllegalStateException("Сначала откройте или прочитайте проект"));return;}
-        String[] actions={"Массовая правка каналов","Серия по шаблону канала","Копировать канал","Копировать зону","Состав и порядок каналов зоны","Экспорт каналов в CSV","Импорт каналов из CSV"};
+        String[] actions={"Массовая правка каналов","Серия по шаблону канала","Копировать канал","Копировать зону","Состав и порядок каналов зоны","Экспорт каналов в CSV","Импорт каналов из CSV","Добавить 1 канал","Добавить серию каналов","Записать в радиостанцию"};
         new AlertDialog.Builder(this).setTitle("Каналы и зоны").setItems(actions,(dialog,which)->{
             if(which==0)selectBatchChannels();
             else if(which==1||which==2)pickRecord(false,item->{
-                if(which==1)CodeplugEditDialogs.series(this,(CodeplugModel.Channel)item,change->reviewChange("Создание серии каналов",change));else copyRecord(item);
+                if(which==1)CodeplugEditDialogs.series(this,(CodeplugModel.Channel)item,model,change->reviewChange("Создание серии каналов",change));else copyRecord(item);
             });
             else if(which==3||which==4)pickRecord(true,item->{
                 if(which==3)copyRecord(item);else CodeplugEditDialogs.zoneOrder(this,(CodeplugModel.Zone)item,model,change->reviewChange("Изменение состава зоны",change));
             });
-            else if(which==5)exportChannels();else importChannels();
+            else if(which==5)exportChannels();else if(which==6)importChannels();else if(which==7){try{CodeplugEditDialogs.create(this,CodeplugSession.project,CodeplugRecords.Kind.CHANNEL,this::commitEdit);}catch(Exception e){problem(e);}}else if(which==8)CodeplugEditDialogs.newSeries(this,CodeplugSession.project,change->reviewChange("Создание серии каналов",change));else writeRadio();
         }).show();
     }
     private interface Picked {void apply(Object item);}
@@ -716,9 +732,10 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void projectMenu() {
         String[] items = {"Открыть файл проекта", "Сохранить копию проекта в файл",
-                "Отменить последнее изменение", "Вернуть исходное чтение", "Список изменений проекта", "Сравнить с другим проектом", "Проверить проект", "История версий", "Восстановить из резервной копии"};
+                "Отменить последнее изменение", "Вернуть исходное чтение", "Список изменений проекта", "Сравнить с другим проектом", "Проверить проект", "История версий", "Восстановить из резервной копии","Записать в радиостанцию"};
         new AlertDialog.Builder(this).setTitle("Проект (.ogcproj)").setItems(items, (dialog, which) -> {
             try {
+                if(which==9){writeRadio();return;}
                 if (which == 0) {
                     if (CodeplugSession.project != null && CodeplugSession.project.changedBytes() > 0) {
                         new AlertDialog.Builder(this).setTitle("Открыть другой проект?")
@@ -827,7 +844,9 @@ public class CodeplugViewerActivity extends ScreenActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) { pendingExport=null; return; }
         try {
-            if(requestCode==COMPARE_PROJECT){
+            if(requestCode==OPEN_BOOT_IMAGE){
+                BootImagePicker.preview(this,data.getData(),payload->reviewChange("Изображение заставки",image->{byte[] updated=BootImage.replace(image.additionalSettings,payload);System.arraycopy(updated,0,image.additionalSettings,0,updated.length);image.bootAndVfos[0]=0;}));
+            }else if(requestCode==COMPARE_PROJECT){
                 try(java.io.InputStream in=getContentResolver().openInputStream(data.getData())){compareProject(CodeplugProject.read(in),"выбранный файл");}
             }else if(requestCode==RESTORE_BACKUP){
                 final android.net.Uri uri=data.getData();
