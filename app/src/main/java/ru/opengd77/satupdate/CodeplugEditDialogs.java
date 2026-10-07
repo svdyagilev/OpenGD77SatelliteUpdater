@@ -137,6 +137,7 @@ final class CodeplugEditDialogs {
         f.text("line1","Строка 1 (до 16 символов)",b.line1,false);f.text("line2","Строка 2 (до 16 символов)",b.line2,false);
         f.target=f.body;f.group="";
         Button image=new Button(a);image.setText("Загрузить изображение…");f.body.addView(image);
+        f.label("PNG или JPEG. Размер заставки: 128 × 64 пикселя, чёрно-белая (1 бит). Другие размеры и цвета преобразуются автоматически; перед применением показывается предпросмотр.");
         image.setOnClickListener(v->{if(f.shownDialog!=null)f.shownDialog.dismiss();pickImage.run();});
         mode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> parent,View v,int pos,long id){text.setVisibility(pos==1?View.VISIBLE:View.GONE);image.setVisibility(pos==0?View.VISIBLE:View.GONE);}public void onNothingSelected(AdapterView<?> parent){}});
         text.setVisibility(b.introMode==1?View.VISIBLE:View.GONE);image.setVisibility(b.introMode==0?View.VISIBLE:View.GONE);

@@ -104,4 +104,33 @@ public class CodeplugWritePlanTest {
         for(Map.Entry<Integer,Byte> e:plan.changes.entrySet())before[e.getKey()]=e.getValue();
         execute(plan,m);assertArrayEquals(before,m.data);
     }
+    @Test public void changingVfoReferencesPreservesUnrelatedLiveTuning()throws Exception{
+        CodeplugProject p=ProjectFormatCompatibilityTest.clean().edit(s->CodeplugLists.vfo(s,0,fields("name","NEW")));
+        CodeplugWritePlan plan=new CodeplugWritePlan(p,ALL);Memory m=new Memory(p);
+        m.data[0x7518+0x78+16]^=1;m.data[0x7518+0x50]^=1;byte[] expected=m.data.clone();
+        for(Map.Entry<Integer,Byte> e:plan.changes.entrySet())expected[e.getKey()]=e.getValue();
+        execute(plan,m);assertArrayEquals(expected,m.data);
+    }
+    @Test public void editedVfoFieldConflictStillBlocksBeforeBackup()throws Exception{
+        CodeplugProject p=ProjectFormatCompatibilityTest.clean().edit(s->CodeplugLists.vfo(s,0,fields("rx","433.5")));
+        CodeplugWritePlan plan=new CodeplugWritePlan(p,ALL);Memory m=new Memory(p);
+        int address=plan.changes.firstKey();m.data[address]^=1;
+        try{execute(plan,m);fail();}catch(IOException expected){assertTrue(expected.getMessage().contains("адрес 0x"));}
+        assertEquals(0,m.writes);assertFalse(m.backedUp);
+    }
+    @Test public void vfoReferenceDependencyStillBlocksContactDeletion()throws Exception{
+        CodeplugProject base=ProjectFormatCompatibilityTest.clean().edit(s->CodeplugRecords.create(s,CodeplugRecords.Kind.DMR,1,fields("name","TG","number","123")));
+        base=new CodeplugProject(base.working,base.identity);
+        CodeplugProject p=base.edit(s->CodeplugRecords.delete(s,s,CodeplugRecords.Kind.DMR,1));
+        Memory m=new Memory(p);m.data[0x7518+0x78+46]=1;
+        try{execute(new CodeplugWritePlan(p,ALL),m);fail();}catch(IOException expected){}
+        assertEquals(0,m.writes);assertFalse(m.backedUp);
+    }
+    @Test public void unchangedByteOfEditedVfoFrequencyCannotProduceHybridValue()throws Exception{
+        CodeplugProject p=ProjectFormatCompatibilityTest.clean().edit(s->CodeplugLists.vfo(s,0,fields("rx","433.5")));
+        CodeplugWritePlan plan=new CodeplugWritePlan(p,ALL);Memory m=new Memory(p);
+        int address=0x7518+0x78+16;assertFalse(plan.changes.containsKey(address));m.data[address]^=1;
+        try{execute(plan,m);fail();}catch(IOException expected){}
+        assertEquals(0,m.writes);assertFalse(m.backedUp);
+    }
 }
