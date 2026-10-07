@@ -1,6 +1,5 @@
 package ru.opengd77.satupdate;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -33,7 +32,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MainActivity extends Activity {
+public class MainActivity extends ScreenActivity {
     private static final String USB_PERMISSION = "ru.opengd77.satupdate.USB_PERMISSION";
     private static final int OPEN_TLE_REQUEST = 1001;
     private static final String CELESTRAK = "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle";
@@ -133,7 +132,7 @@ public class MainActivity extends Activity {
         advancedContainer = findViewById(R.id.advancedContainer);
         diagnosticsContainer = findViewById(R.id.diagnosticsContainer);
 
-        versionText.setText("v" + BuildConfig.VERSION_NAME + " • Satellite/Keps • Android 6+");
+        versionText.setText("v" + BuildConfig.VERSION_NAME + " • MD-9600 / OpenGD77");
 
         String[] sources = {"CelesTrak — amateur", "R4UAB — satonline.txt", "Свой URL"};
         sourceSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, sources));
@@ -146,13 +145,30 @@ public class MainActivity extends Activity {
             public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
 
-        try (InputStream in = getAssets().open("Satellites.txt")) {
-            configs = SatelliteConfigParser.parse(in);
+        try {
+            configs = SatelliteConfigStore.load(this);
             log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
             log("Satellite module: конфигураций Satellites.txt: " + configs.size());
         } catch (Exception e) {
+            configs=new java.util.ArrayList<>();
             log("Ошибка Satellites.txt: " + e.getMessage());
         }
+
+        findViewById(R.id.callsignDatabaseButton).setOnClickListener(v -> {
+            if (radioBusy) return;
+            transport.close();
+            originalAdditional = null;
+            updatePlan = null;
+            updateButtons();
+            startActivity(new Intent(this, CallsignActivity.class));
+        });
+
+        findViewById(R.id.editorProjectButton).setOnClickListener(v -> {
+            if (radioBusy) return;
+            transport.close();
+            startActivity(new Intent(this, CodeplugViewerActivity.class));
+            finish();
+        });
 
         autoUpdateButton.setOnClickListener(v -> startAutomaticUpdate());
         downloadButton.setOnClickListener(v -> downloadTle());
@@ -160,13 +176,20 @@ public class MainActivity extends Activity {
         connectButton.setOnClickListener(v -> requestConnect());
         dryRunButton.setOnClickListener(v -> runDryRun());
         updateButton.setOnClickListener(v -> confirmUpdate());
-        advancedToggleButton.setOnClickListener(v -> toggleSection(advancedContainer, advancedToggleButton, "Расширенный режим"));
-        diagnosticsToggleButton.setOnClickListener(v -> toggleSection(diagnosticsContainer, diagnosticsToggleButton, "Диагностика"));
+        advancedToggleButton.setOnClickListener(v -> toggleSection(advancedContainer, advancedToggleButton, "Источник TLE и ручные операции"));
+        diagnosticsToggleButton.setOnClickListener(v -> toggleSection(diagnosticsContainer, diagnosticsToggleButton, "Журнал операций"));
 
         IntentFilter f = new IntentFilter(USB_PERMISSION);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbReceiver, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(usbReceiver, f);
 
+        findViewById(R.id.satellitePageButton).setOnClickListener(v -> showSatellitePage(true));
+        findViewById(R.id.satelliteConfigsButton).setOnClickListener(v->editSatelliteConfigs());
+        findViewById(R.id.satelliteBackButton).setOnClickListener(v -> showSatellitePage(false));
+        showSatellitePage(false);
+        if(getIntent().getBooleanExtra("satellitePage",false))showSatellitePage(true);
+        if(getIntent().getBooleanExtra("editSatellites",false)&&savedInstanceState==null)editSatelliteConfigs();
+        if(savedInstanceState!=null)showSatellitePage(savedInstanceState.getBoolean("satellitePage",false));
         updateButtons();
     }
 
@@ -190,6 +213,26 @@ public class MainActivity extends Activity {
             setOperationSummary("Ожидание подключения радиостанции");
             setBusy(false, true);
         }
+    }
+
+    private void editSatelliteConfigs(){SatelliteConfigDialogs.show(this,configs,next->{if(radioBusy)throw new IllegalStateException("Дождитесь завершения операции с рацией");SatelliteConfigStore.save(this,next);configs=next;prepared=null;tleByCatalog=null;updatePlan=null;applyButtonState();tleSummaryText.setText("Список спутников изменён. Загрузите свежие TLE.");});}
+    private void showSatellitePage(boolean open) {
+        findViewById(R.id.mainPage).setVisibility(open?View.GONE:View.VISIBLE);
+        findViewById(R.id.satellitePage).setVisibility(open?View.VISIBLE:View.GONE);
+        diagnosticsToggleButton.setVisibility(open?View.VISIBLE:View.GONE);
+        if(!open)diagnosticsContainer.setVisibility(View.GONE);
+        android.widget.ScrollView scroll=findViewById(R.id.mainScroll);
+        scroll.post(()->scroll.scrollTo(0,0));
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putBoolean("satellitePage",findViewById(R.id.satellitePage).getVisibility()==View.VISIBLE);
+    }
+
+    @Override public void onBackPressed() {
+        if(findViewById(R.id.satellitePage).getVisibility()==View.VISIBLE)showSatellitePage(false);
+        else super.onBackPressed();
     }
 
     private void toggleSection(View section, Button button, String title) {
@@ -401,8 +444,8 @@ public class MainActivity extends Activity {
                 originalAdditional = driver.readAdditionalSettings();
                 AdditionalSettingsImage img = new AdditionalSettingsImage(originalAdditional);
                 AdditionalSettingsImage.Tlv sat = img.findTlv(3);
-                if (sat == null) throw new IllegalStateException("Satellite TLV ID 3 не найден");
-                log("Satellite TLV: offset 0x" + Integer.toHexString(sat.headerOffset)
+                if (sat == null) log("Блок спутников отсутствует. При записи будет создан список из Satellites.txt и пригодных TLE.");
+                else log("Satellite TLV: offset 0x" + Integer.toHexString(sat.headerOffset)
                         + ", payload 0x" + Integer.toHexString(sat.payloadLength));
 
                 bankSummary = SatelliteBankInspector.inspect(originalAdditional, System.currentTimeMillis());
@@ -507,7 +550,9 @@ public class MainActivity extends Activity {
             b.append("  0x").append(Integer.toHexString(0x20 + s)).append(": ")
                     .append(changed ? "CHANGED" : "unchanged").append('\n');
         }
-        b.append("Проверка границ TLV: OK — только orbital bytes 0x08..0x2F существующих записей.\n");
+        b.append(plan.createsSatelliteBank
+                ? "Создание списка из Satellites.txt: новый TLV в свободной памяти; остальные блоки сохранены.\n"
+                : "Проверка границ TLV: OK — только orbital bytes 0x08..0x2F существующих записей.\n");
         return b.toString();
     }
 
@@ -521,14 +566,16 @@ public class MainActivity extends Activity {
             return;
         }
 
-        String message = "Источник: " + tleSourceLabel
+        String message = (plan.createsSatelliteBank
+                ? "В рации нет блока спутников. Будет создан список из Satellites.txt с названиями, частотами, субтонами, APRS и орбитальными данными.\n\n" : "")
+                + "Источник: " + tleSourceLabel
                 + "\nСпутников обновится: " + plan.changedRecords.size()
                 + "\nИзменённых байт: " + plan.changedBytes
                 + "\nFLASH-секторов: " + plan.changedSectorIndexes.size()
                 + "\n\nПеред записью автоматически будет создан backup 0x2000 байт, затем выполнены повторное чтение и полный read-back контроль.";
 
         new AlertDialog.Builder(this)
-                .setTitle("Обновить Keps?")
+                .setTitle(plan.createsSatelliteBank ? "Создать список спутников?" : "Обновить Keps?")
                 .setMessage(message)
                 .setNegativeButton("Отмена", (d, w) -> setOperationSummary("Обновление отменено пользователем"))
                 .setPositiveButton("Записать", (d, w) -> writeUpdate(plan))
@@ -538,12 +585,14 @@ public class MainActivity extends Activity {
     private void confirmUpdate() {
         if (updatePlan == null || updatePlan.changedBytes == 0 || radioBusy) return;
         final UpdatePlan plan = updatePlan;
-        String message = "Dry Run успешно завершён."
+        String message = (plan.createsSatelliteBank
+                ? "Будет создан список спутников из Satellites.txt с частотами, субтонами, APRS и орбитальными данными.\n\n" : "")
+                + "Dry Run успешно завершён."
                 + "\n\nИзменённых байт: " + plan.changedBytes
                 + "\nСекторов FLASH: " + plan.changedSectorIndexes.size()
                 + "\n\nПеред записью будет создан backup, FLASH считан повторно и каждый записанный сектор проверен read-back сравнением.";
         new AlertDialog.Builder(this)
-                .setTitle("Записать Keps?")
+                .setTitle(plan.createsSatelliteBank ? "Создать список спутников?" : "Записать Keps?")
                 .setMessage(message)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Записать", (d, w) -> writeUpdate(plan))
@@ -592,6 +641,8 @@ public class MainActivity extends Activity {
     }
 
     private void applyButtonState() {
+        findViewById(R.id.satelliteConfigsButton).setEnabled(!radioBusy);
+        findViewById(R.id.editorProjectButton).setEnabled(!radioBusy);
         autoUpdateButton.setEnabled(!radioBusy);
         connectButton.setEnabled(!radioBusy);
         dryRunButton.setEnabled(!radioBusy);

@@ -46,6 +46,36 @@ final class AdditionalSettingsImage {
         return null;
     }
 
+    /** Append only at a valid TLV terminator, and only into a wholly erased tail.
+     * Never reinterpret a corrupt length or zero-filled memory as free space. */
+    Tlv createSatellitePayload(byte[] payload) {
+        if (payload.length != OpenGd77SatelliteEncoder.SATELLITE_PAYLOAD_SIZE)
+            throw new IllegalArgumentException("Unexpected satellite payload size");
+        int off = 12;
+        while (off + 8 <= data.length) {
+            long id = ByteUtil.u32le(data, off);
+            long len = ByteUtil.u32le(data, off + 4);
+            if (id == SATELLITE_TLV_ID)
+                throw new IllegalStateException("Satellite block already exists");
+            if (id == 0xffffffffL && len == 0xffffffffL) {
+                // Keep an erased 8-byte terminator after the new block.
+                if (off + 8 + payload.length + 8 > data.length)
+                    throw new IllegalStateException("Недостаточно места для блока спутников");
+                for (int i = off; i < data.length; i++)
+                    if ((data[i] & 0xff) != 0xff)
+                        throw new IllegalStateException("После конца TLV есть данные: создание блока отменено");
+                ByteUtil.putU32le(data, off, SATELLITE_TLV_ID);
+                ByteUtil.putU32le(data, off + 4, payload.length);
+                System.arraycopy(payload, 0, data, off + 8, payload.length);
+                return new Tlv(off, off + 8, payload.length);
+            }
+            if (id == 0xffffffffL || len == 0 || len > data.length - off - 8)
+                throw new IllegalStateException("Повреждённая структура TLV: создание блока отменено");
+            off += 8 + (int)len;
+        }
+        throw new IllegalStateException("Свободный конец TLV не найден в прочитанной области");
+    }
+
     void replaceSatellitePayload(byte[] payload) {
         Tlv tlv = findTlv(SATELLITE_TLV_ID);
         if (tlv == null) throw new IllegalStateException("Satellite TLV ID 3 not found");

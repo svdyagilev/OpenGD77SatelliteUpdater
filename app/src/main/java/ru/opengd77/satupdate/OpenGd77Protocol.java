@@ -5,6 +5,9 @@ import java.util.Arrays;
 
 final class OpenGd77Protocol {
     private static final int BLOCK = 32;
+    // usb_com.c bounds CPS read responses to COM_REQUESTBUFFER_SIZE - 3 (1533 bytes).
+    // Keep well below the firmware buffer while avoiding hundreds of thousands of 32-byte round trips.
+    private static final int BULK_READ = 1024;
     private static final int SECTOR = 4096;
     private static final int TIMEOUT = 3000;
     private final UsbCdcSerialTransport io;
@@ -15,7 +18,9 @@ final class OpenGd77Protocol {
         final long structVersion;
         final long radioType;
         final String fwRevision;
-        FirmwareInfo(long v, long type, String rev) { structVersion = v; radioType = type; fwRevision = rev; }
+        final long flashId;
+        final int features;
+        FirmwareInfo(long v, long type, String rev, long flashId, int features) { structVersion = v; radioType = type; fwRevision = rev; this.flashId=flashId; this.features=features; }
     }
 
     FirmwareInfo readFirmwareInfo() throws IOException {
@@ -23,11 +28,17 @@ final class OpenGd77Protocol {
         long ver = ByteUtil.u32le(data, 0);
         long type = ByteUtil.u32le(data, 4);
         String rev = asciiZ(data, 8, 16);
-        return new FirmwareInfo(ver, type, rev);
+        return new FirmwareInfo(ver, type, rev, ByteUtil.u32le(data,40), (data[44]&255)|((data[45]&255)<<8));
     }
 
     byte[] readFlash(int address, int length) throws IOException {
         return readMemory(0x01, address, length);
+    }
+
+    interface ReadProgress { void onProgress(int completed,int total); }
+
+    byte[] readFlashLarge(int address,int length,ReadProgress progress)throws IOException {
+        return readMemory(0x01,address,length,BULK_READ,progress);
     }
 
     byte[] readEeprom(int address, int length) throws IOException {
@@ -35,11 +46,17 @@ final class OpenGd77Protocol {
     }
 
     private byte[] readMemory(int command, int address, int length) throws IOException {
+        return readMemory(command,address,length,BLOCK,(done,total)->{});
+    }
+
+    private byte[] readMemory(int command,int address,int length,int block,ReadProgress progress)throws IOException {
         byte[] out = new byte[length];
-        for (int off = 0; off < length; off += BLOCK) {
-            int n = Math.min(BLOCK, length - off);
-            byte[] part = readRaw(command, address + off, n);
-            System.arraycopy(part, 0, out, off, n);
+        int total=(length+block-1)/block;
+        for (int off = 0,partIndex=0; off < length; off += block) {
+            int n = Math.min(block, length - off);
+            byte[] chunkData = readRaw(command, address + off, n);
+            System.arraycopy(chunkData, 0, out, off, n);
+            progress.onProgress(++partIndex,total);
         }
         return out;
     }
