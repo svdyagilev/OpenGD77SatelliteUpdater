@@ -14,8 +14,8 @@ final class SatelliteConfigStore {
         for(SatelliteConfig c:configs){
             if(c.catalogNumber<=0||!ids.add(c.catalogNumber))throw new IllegalArgumentException("NORAD должен быть положительным и уникальным");
             if(!c.name.matches("[A-Za-z0-9 ._+/-]{1,8}")||!names.add(c.name))throw new IllegalArgumentException("Уникальное имя спутника: 1–8 латинских символов");
-            for(String value:new String[]{c.rx1,c.tx1,c.rx2,c.tx2,c.rx3,c.tx3}){double mhz=Double.parseDouble(value);if(!Double.isFinite(mhz)||mhz<0||mhz>999.99999)throw new IllegalArgumentException("Проверьте частоты спутника");}
-            for(String value:new String[]{c.ctcss,c.armCtcss}){double tone=Double.parseDouble(value);if(!Double.isFinite(tone)||tone<0||tone>254.1)throw new IllegalArgumentException("Субтон: 0…254.1 Гц");}
+            for(String value:new String[]{c.rx1,c.tx1,c.rx2,c.tx2,c.rx3,c.tx3}){double mhz=Double.parseDouble(value);if((Double.isNaN(mhz)||Double.isInfinite(mhz))||mhz<0||mhz>999.99999)throw new IllegalArgumentException("Проверьте частоты спутника");}
+            for(String value:new String[]{c.ctcss,c.armCtcss}){double tone=Double.parseDouble(value);if((Double.isNaN(tone)||Double.isInfinite(tone))||tone<0||tone>254.1)throw new IllegalArgumentException("Субтон: 0…254.1 Гц");}
             if(!c.aprsConfig.matches("[A-Za-z0-9 *./-]{0,24}"))throw new IllegalArgumentException("Проверьте путь APRS (до 24 символов)");
         }
     }

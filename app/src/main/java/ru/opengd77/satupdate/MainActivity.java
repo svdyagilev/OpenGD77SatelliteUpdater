@@ -150,7 +150,7 @@ public class MainActivity extends ScreenActivity {
             log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
             log("Satellite module: конфигураций Satellites.txt: " + configs.size());
         } catch (Exception e) {
-            configs=new ArrayList<>();
+            configs=new java.util.ArrayList<>();
             log("Ошибка Satellites.txt: " + e.getMessage());
         }
 

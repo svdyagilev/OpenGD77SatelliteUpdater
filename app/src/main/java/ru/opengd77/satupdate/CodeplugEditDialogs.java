@@ -158,8 +158,7 @@ final class CodeplugEditDialogs {
                 int id=m.contacts.get(which).index;if(on&&!selected.contains(id))selected.add(id);else if(!on)selected.remove((Integer)id);
             }).setNegativeButton("Отмена",null).setPositiveButton("Готово",(d,w)->{
                 StringBuilder value=new StringBuilder();for(int id:selected){if(value.length()>0)value.append(", ");value.append(id);}members.setText(value);
-            }).create();
-            attachSelectAll(a,picker,checked,on->{selected.clear();if(on)for(CodeplugModel.Channel c:m.channels)selected.add(c.index);});picker.show();
+            }).show();
         });f.show();
     }
     private static void aprs(Activity a,CodeplugModel.AprsConfig ap,Commit commit,CodeplugRecords.Kind creating){
@@ -239,10 +238,11 @@ final class CodeplugEditDialogs {
             catch(NumberFormatException e){new AlertDialog.Builder(a).setMessage("Проверьте номера каналов").setPositiveButton("OK",null).show();return;}
             String[] labels=new String[m.channels.size()];boolean[] checked=new boolean[labels.length];
             for(int i=0;i<labels.length;i++){CodeplugModel.Channel c=m.channels.get(i);labels[i]="#"+c.index+" · "+c.name;checked[i]=selected.contains(c.index);}
+            CheckBox[] all={null};
             AlertDialog picker=new AlertDialog.Builder(a).setTitle("Каналы зоны").setMultiChoiceItems(labels,checked,(d,which,on)->{
-                int id=m.channels.get(which).index;if(on&&!selected.contains(id))selected.add(id);else if(!on)selected.remove((Integer)id);
+                int id=m.channels.get(which).index;if(on&&!selected.contains(id))selected.add(id);else if(!on)selected.remove((Integer)id);checked[which]=on;syncSelectAll(all[0],checked);
             }).setNegativeButton("Отмена",null).setPositiveButton("Готово",null).create();
-            attachSelectAll(a,picker,checked,on->{selected.clear();if(on)for(CodeplugModel.Channel c:m.channels)selected.add(c.index);});
+            all[0]=attachSelectAll(a,picker,checked,on->{selected.clear();if(on)for(CodeplugModel.Channel c:m.channels)selected.add(c.index);});
             picker.setOnShowListener(vv->picker.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{
                 if(selected.size()>80){new AlertDialog.Builder(a).setMessage("В зоне не более 80 каналов. Снимите лишние отметки.").setPositiveButton("OK",null).show();return;}
                 members.setText(CodeplugRecords.join(selected));picker.dismiss();
@@ -324,12 +324,12 @@ final class CodeplugEditDialogs {
                 List<Integer> additions=new ArrayList<>();List<CodeplugModel.Channel> available=new ArrayList<>();
                 for(CodeplugModel.Channel c:model.channels)if(!order.contains(c.index))available.add(c);
                 String[] names=new String[available.size()];for(int i=0;i<names.length;i++)names[i]="#"+available.get(i).index+" · "+available.get(i).name;
-                boolean[] allChecked=new boolean[names.length];
+                boolean[] allChecked=new boolean[names.length];CheckBox[] all={null};
                 AlertDialog picker=new AlertDialog.Builder(a).setTitle("Добавить в конец зоны").setMultiChoiceItems(names,allChecked,(d,which,on)->{
-                    int channel=available.get(which).index;if(on)additions.add(channel);else additions.remove((Integer)channel);
+                    int channel=available.get(which).index;if(on)additions.add(channel);else additions.remove((Integer)channel);allChecked[which]=on;syncSelectAll(all[0],allChecked);
                 }).setNegativeButton("Отмена",null).setPositiveButton("Добавить",null).create();
                 // The native callback below owns additions; the header selects the same IDs.
-                attachSelectAll(a,picker,allChecked,on->{additions.clear();if(on)for(CodeplugModel.Channel c:available)additions.add(c.index);});
+                all[0]=attachSelectAll(a,picker,allChecked,on->{additions.clear();if(on)for(CodeplugModel.Channel c:available)additions.add(c.index);});
                 picker.setOnShowListener(x->picker.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button2->{
                     if(order.size()+additions.size()>80){new AlertDialog.Builder(a).setMessage("В зоне не более 80 каналов").setPositiveButton("OK",null).show();return;}
                     order.addAll(additions);refresh.run();picker.dismiss();
@@ -343,9 +343,13 @@ final class CodeplugEditDialogs {
     }
 
     private interface AllSelection {void apply(boolean on);}
-    private static void attachSelectAll(Activity a,AlertDialog picker,boolean[] checked,AllSelection selection){
-        CheckBox all=new CheckBox(a);all.setText("Выбрать все");all.setPadding(20,12,20,12);picker.setCustomTitle(all);
-        all.setOnCheckedChangeListener((button,on)->{Arrays.fill(checked,on);selection.apply(on);ListView list=picker.getListView();if(list!=null)for(int i=0;i<checked.length;i++)list.setItemChecked(i,on);});
+    private static CheckBox attachSelectAll(Activity a,AlertDialog picker,boolean[] checked,AllSelection selection){
+        LinearLayout header=new LinearLayout(a);header.setOrientation(1);TextView title=new TextView(a);title.setText("Выбор каналов");title.setTextSize(20);header.addView(title);
+        CheckBox all=new CheckBox(a);all.setText("Выбрать все");header.addView(all);picker.setCustomTitle(header);boolean[] syncing={false};all.setTag(syncing);syncSelectAll(all,checked);
+        all.setOnCheckedChangeListener((button,on)->{if(syncing[0])return;Arrays.fill(checked,on);selection.apply(on);ListView list=picker.getListView();if(list!=null)for(int i=0;i<checked.length;i++)list.setItemChecked(i,on);});return all;
+    }
+    private static void syncSelectAll(CheckBox all,boolean[] checked){
+        if(all==null)return;boolean value=checked.length>0;for(boolean on:checked)value&=on;boolean[] syncing=(boolean[])all.getTag();syncing[0]=true;all.setChecked(value);syncing[0]=false;
     }
     static void radio(Activity a,CodeplugModel m,Commit commit){
         Form f=new Form(a,"Настройки рации",v->commit.apply(s->CodeplugLists.radio(s,v)));
