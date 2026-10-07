@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 public class CodeplugReadActivity extends ScreenActivity {
     private static final String USB_PERMISSION = "ru.opengd77.satupdate.USB_PERMISSION_CODEPLUG";
 
+    private boolean masterOnly;
     private TextView status;
     private Button retryButton;
     private UsbManager usbManager;
@@ -50,6 +51,7 @@ public class CodeplugReadActivity extends ScreenActivity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        masterOnly=getIntent().getBooleanExtra("masterSettingsOnly",false);
         setContentView(R.layout.activity_codeplug_read);
 
         status = findViewById(R.id.codeplugReadStatus);
@@ -67,9 +69,10 @@ public class CodeplugReadActivity extends ScreenActivity {
         else registerReceiver(usbReceiver, f);
 
         log("OpenGD77 CPS Android v" + BuildConfig.VERSION_NAME);
-        log("Чтение codeplug для редактора");
-        log("Читаются известные EEPROM/FLASH блоки, Сведения о станции, VFO, APRS, DTMF и Спутники.");
-        log("Правки сохраняются в проекте. Запись выполняется отдельно кнопкой «Записать».");
+        if(masterOnly){log("Общая мощность и шумоподавитель — чтение из рации");log("Поддерживается версия настроек RUS CPS 0xDEFECE7E. Запись этих параметров пока не поддерживается.");}
+        else log("Чтение codeplug для редактора");
+        if(!masterOnly)log("Читаются известные EEPROM/FLASH блоки, Сведения о станции, VFO, APRS, DTMF и Спутники.");
+        if(!masterOnly)log("Правки сохраняются в проекте. Запись выполняется отдельно кнопкой «Записать».");
 
         getWindow().getDecorView().post(this::beginRead);
     }
@@ -90,6 +93,7 @@ public class CodeplugReadActivity extends ScreenActivity {
 
     private void returnToMain() {
         try { transport.close(); } catch (Exception ignored) {}
+        if(masterOnly){finish();return;}
         Intent i = new Intent(this, MainActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(i);
@@ -138,6 +142,10 @@ public class CodeplugReadActivity extends ScreenActivity {
                 transport.open(d);
                 RadioDriver.Identity identity = driver.identify();
                 log(identity.compactText());
+                if(masterOnly){
+                    RadioMasterSettings settings=protocol.readMasterSettings();log("\n"+settings.text());transport.close();
+                    runOnUiThread(()->{busy=false;retryButton.setEnabled(true);retryButton.setText("Обновить значения");});return;
+                }
                 log("Начинаю расширенное чтение codeplug...");
 
                 CodeplugSnapshot raw = driver.readCodeplug(this::log);
@@ -159,7 +167,7 @@ public class CodeplugReadActivity extends ScreenActivity {
                 });
             } catch (Exception e) {
                 try { transport.close(); } catch (Exception ignored) {}
-                fail("Ошибка чтения codeplug: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                fail((masterOnly?"Ошибка чтения общих настроек: ":"Ошибка чтения codeplug: ") + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
         });
     }

@@ -82,6 +82,14 @@ final class CodeplugRecords {
     private static String mhz(long hz){return java.math.BigDecimal.valueOf(hz,6).toPlainString();}
     /** Rebuild new records from validated values; rejects injected reserved bits and malformed BCD. */
     static void validateNew(CodeplugSnapshot s,CodeplugModel model,Kind k,int index){
+        CodeplugSnapshot rebuilt=normalized(s,model,k,index);
+        int o=offset(k,index),b=block(k,index);
+        if(!Arrays.equals(Arrays.copyOfRange(CodeplugProject.blocks(s)[b],o,o+size(k)),
+                Arrays.copyOfRange(CodeplugProject.blocks(rebuilt)[b],o,o+size(k))))
+            throw new IllegalArgumentException("Новая запись #"+index+" содержит неподдерживаемые значения");
+    }
+    /** Re-encode supported values from Windows CPS without importing reserved record bits. */
+    static CodeplugSnapshot normalized(CodeplugSnapshot s,CodeplugModel model,Kind k,int index){
         Object obj=record(model,k,index);
         CodeplugSnapshot rebuilt=CodeplugProject.copy(s);seed(rebuilt,k,index);
         if(k==Kind.CHANNEL){
@@ -122,16 +130,17 @@ final class CodeplugRecords {
             CodeplugEditor.aprs(rebuilt,index,fields("name",a.name,"ssid",a.senderSsid,"latitude",String.format(Locale.US,"%.4f",a.latitude),
                 "longitude",String.format(Locale.US,"%.4f",a.longitude),"via1",a.via1,"via2",a.via2,"via1Ssid",a.via1Ssid,"via2Ssid",a.via2Ssid,
                 "comment",a.comment,"tx",mhz(a.txHz),"baud300",(a.flags&1)!=0,"fixed",(a.flags&2)!=0,"qsy",(a.flags&4)!=0,
-                "iconTable",Character.toString((char)a.iconTable),"icon",Character.toString((char)a.iconIndex)));
+                "iconTable",Character.toString((char)(a.iconTable<=1?(a.iconTable==0?47:92):a.iconTable)),"icon",Character.toString((char)(a.iconTable<=1?a.iconIndex+33:a.iconIndex))));
+            if(a.iconTable<=1){
+                if(a.iconIndex>93)throw new IllegalArgumentException("Неверный индекс символа APRS Windows CPS");
+                rebuilt.aprsConfigs[offset(k,index)+29]=(byte)a.iconTable;rebuilt.aprsConfigs[offset(k,index)+30]=(byte)a.iconIndex;
+            }
         }else{
             CodeplugModel.Zone z=(CodeplugModel.Zone)obj;StringBuilder ids=new StringBuilder();
             for(int id:z.channelIndices)ids.append(id).append(' ');
             CodeplugEditor.zone(rebuilt,index,fields("name",z.name,"members",ids.toString()));
         }
-        int o=offset(k,index),b=block(k,index);
-        if(!Arrays.equals(Arrays.copyOfRange(CodeplugProject.blocks(s)[b],o,o+size(k)),
-                Arrays.copyOfRange(CodeplugProject.blocks(rebuilt)[b],o,o+size(k))))
-            throw new IllegalArgumentException("Новая запись #"+index+" содержит неподдерживаемые значения");
+        return rebuilt;
     }
 
     static String join(List<Integer> ids){StringBuilder s=new StringBuilder();for(int id:ids)s.append(id).append(' ');return s.toString().trim();}

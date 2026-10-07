@@ -20,7 +20,7 @@ import java.util.Locale;
 public class CodeplugViewerActivity extends ScreenActivity {
     private CodeplugModel model;
     private int activeCategory;
-    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604, COMPARE_PROJECT = 605, RESTORE_BACKUP = 606, OPEN_BOOT_IMAGE = 607;
+    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604, COMPARE_PROJECT = 605, RESTORE_BACKUP = 606, OPEN_BOOT_IMAGE = 607, IMPORT_OGD = 608, EXPORT_OGD = 609;
     private final java.util.concurrent.ExecutorService toolsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private byte[] pendingExport;
     private android.app.ProgressDialog toolsProgress;
@@ -61,6 +61,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
             if (activeCategory == 10) CodeplugEditDialogs.boot(this, model.boot, this::commitEdit,this::pickBootImage);
             else if(activeCategory==9)CodeplugEditDialogs.dtmfSettings(this,model.dtmfSettings,this::commitEdit);
             else if(activeCategory==14)CodeplugEditDialogs.bands(this,model,this::commitEdit);
+            else if(activeCategory==17||activeCategory==18)startActivity(new Intent(this,CodeplugReadActivity.class).putExtra("masterSettingsOnly",true));
             else if(activeCategory==16)CodeplugEditDialogs.radio(this,model,this::commitEdit);
             else CodeplugEditDialogs.general(this, model.general, this::commitEdit);
         });
@@ -136,8 +137,8 @@ public class CodeplugViewerActivity extends ScreenActivity {
         projectMenu();
     }
     private void writeRadio(){if(model==null){problem(new IllegalArgumentException("Сначала откройте проект"));return;}startActivity(new Intent(this,CodeplugWriteActivity.class));finish();}
-    private void addChannelMenu(){new AlertDialog.Builder(this).setTitle("Добавить каналы").setItems(new String[]{"Добавить 1 канал","Добавить серию каналов"},(d,which)->{
-        try{if(which==0)CodeplugEditDialogs.create(this,CodeplugSession.project,CodeplugRecords.Kind.CHANNEL,this::commitEdit);else CodeplugEditDialogs.newSeries(this,CodeplugSession.project,change->reviewChange("Создание серии каналов",change));}catch(Exception e){problem(e);}
+    private void addChannelMenu(){new AlertDialog.Builder(this).setTitle("Добавить каналы").setItems(new String[]{"Добавить 1 канал","Добавить серию каналов","Предустановленные каналы"},(d,which)->{
+        try{if(which==2){PresetDialogs.show(this,model,change->reviewChange("Предустановленные каналы",change));return;}if(which==0)CodeplugEditDialogs.create(this,CodeplugSession.project,CodeplugRecords.Kind.CHANNEL,this::commitEdit);else CodeplugEditDialogs.newSeries(this,CodeplugSession.project,change->reviewChange("Создание серии каналов",change));}catch(Exception e){problem(e);}
     }).show();}
     private void contactsMenu(){new AlertDialog.Builder(this).setTitle("Контакты").setItems(new String[]{"Добавить контакт DMR","Добавить контакт DTMF","Добавить группу приёма","Контакты DMR","Контакты DTMF","Группы приёма","Записать в радиостанцию"},(d,which)->{
         try{if(which==6)writeRadio();else if(which>=3)showCategory(new int[]{4,8,5}[which-3]);else CodeplugEditDialogs.create(this,CodeplugSession.project,new CodeplugRecords.Kind[]{CodeplugRecords.Kind.DMR,CodeplugRecords.Kind.DTMF,CodeplugRecords.Kind.GROUP}[which],this::commitEdit);}catch(Exception e){problem(e);}
@@ -236,7 +237,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
         refreshSummary();
         refreshAddButton();
         visibleObjects.clear();
-        findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10 || category == 9 || category == 14 || category == 16) ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(model != null && (category == 13 || category == 10 || category == 9 || category == 14 || (category == 16 || category == 17 || category == 18)) ? View.VISIBLE : View.GONE);
         if (model == null) return;
         List<String> rows = new ArrayList<>();
         int[] children=CodeplugNavigation.children(category);
@@ -320,6 +321,11 @@ public class CodeplugViewerActivity extends ScreenActivity {
                         model.general.flag1, model.general.flag2, model.general.flag3, model.general.flag4));
                 break;
         }
+        if(category==17||category==18){
+            addText(rows,"Нажмите «Прочитать из рации», чтобы увидеть текущие общие значения мощности и шумоподавителя VHF/UHF.");
+            addText(rows,"Они используются каналами с настройкой Master / Общая настройка. Просмотр доступен в поддерживаемой RUS-прошивке. Запись через Android CPS пока не поддерживается; изменение доступно в меню рации.");
+        }
+        ((Button)findViewById(R.id.editGeneralButton)).setText(category==17||category==18?"Прочитать из рации":"Изменить");
         listView.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, rows));
     }
 
@@ -501,12 +507,11 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void channelTools() {
         if(model==null||CodeplugSession.project==null){problem(new IllegalStateException("Сначала откройте или прочитайте проект"));return;}
-        String[] actions={"Массовая правка каналов","Серия по шаблону канала","Копировать канал","Копировать зону","Состав и порядок каналов зоны","Экспорт каналов в CSV","Импорт каналов из CSV","Добавить 1 канал","Добавить серию каналов","Записать в радиостанцию"};
+        String[] actions={"Массовая правка каналов","Предустановленные каналы","Копировать канал","Копировать зону","Состав и порядок каналов зоны","Экспорт каналов в CSV","Импорт каналов из CSV","Добавить 1 канал","Добавить серию каналов","Записать в радиостанцию"};
         new AlertDialog.Builder(this).setTitle("Каналы и зоны").setItems(actions,(dialog,which)->{
             if(which==0)selectBatchChannels();
-            else if(which==1||which==2)pickRecord(false,item->{
-                if(which==1)CodeplugEditDialogs.series(this,(CodeplugModel.Channel)item,model,change->reviewChange("Создание серии каналов",change));else copyRecord(item);
-            });
+            else if(which==1)PresetDialogs.show(this,model,change->reviewChange("Предустановленные каналы",change));
+            else if(which==2)pickRecord(false,this::copyRecord);
             else if(which==3||which==4)pickRecord(true,item->{
                 if(which==3)copyRecord(item);else CodeplugEditDialogs.zoneOrder(this,(CodeplugModel.Zone)item,model,change->reviewChange("Изменение состава зоны",change));
             });
@@ -701,7 +706,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
         sectionTitle.setVisibility(loaded?View.VISIBLE:View.GONE);
         findViewById(R.id.searchToggleButton).setVisibility(loaded?View.VISIBLE:View.GONE);
         if(!loaded)findViewById(R.id.projectSearchRow).setVisibility(View.GONE);
-        findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || activeCategory == 16) ? View.VISIBLE : View.GONE);
+        findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || (activeCategory == 16 || activeCategory == 17 || activeCategory == 18)) ? View.VISIBLE : View.GONE);
         if (!loaded) {
             summaryText.setVisibility(View.VISIBLE);
             summaryText.setMaxLines(4);
@@ -732,10 +737,20 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void projectMenu() {
         String[] items = {"Открыть файл проекта", "Сохранить копию проекта в файл",
-                "Отменить последнее изменение", "Вернуть исходное чтение", "Список изменений проекта", "Сравнить с другим проектом", "Проверить проект", "История версий", "Восстановить из резервной копии","Записать в радиостанцию"};
-        new AlertDialog.Builder(this).setTitle("Проект (.ogcproj)").setItems(items, (dialog, which) -> {
+                "Отменить последнее изменение", "Вернуть исходное чтение", "Список изменений проекта", "Сравнить с другим проектом", "Проверить проект", "История версий", "Восстановить из резервной копии","Записать в радиостанцию","Импорт Windows CPS (.ogd)","Экспорт Windows CPS (.ogd)"};
+        new AlertDialog.Builder(this).setTitle("Проект").setItems(items, (dialog, which) -> {
             try {
                 if(which==9){writeRadio();return;}
+                if(which==10){
+                    if(CodeplugSession.project==null)throw new IllegalArgumentException("Сначала прочитайте рацию или откройте её проект .ogcproj");
+                    new AlertDialog.Builder(this).setTitle("Импорт OpenGD77 RUS (.ogd)").setMessage("Поддерживаемые каналы, контакты, зоны и настройки будут заменены данными файла. Модель рации и границы частот сохраняются. Перед применением откроется список изменений; запись в рацию выполняется отдельно.")
+                        .setNegativeButton("Отмена",null).setPositiveButton("Выбрать OGD",(d,w)->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),IMPORT_OGD)).show();return;
+                }
+                if(which==11){
+                    if(CodeplugSession.project==null)throw new IllegalArgumentException("Сначала откройте проект");
+                    pendingExport=WindowsOgd.encode(CodeplugSession.project);
+                    startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,"MD9600-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",Locale.US).format(new java.util.Date())+".ogd"),EXPORT_OGD);return;
+                }
                 if (which == 0) {
                     if (CodeplugSession.project != null && CodeplugSession.project.changedBytes() > 0) {
                         new AlertDialog.Builder(this).setTitle("Открыть другой проект?")
@@ -844,7 +859,13 @@ public class CodeplugViewerActivity extends ScreenActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) { pendingExport=null; return; }
         try {
-            if(requestCode==OPEN_BOOT_IMAGE){
+            if(requestCode==IMPORT_OGD){
+                final android.net.Uri uri=data.getData();reviewOperation("Импорт Windows CPS (.ogd)",base->{try(java.io.InputStream in=getContentResolver().openInputStream(uri)){return WindowsOgd.importInto(base,WindowsOgd.read(in));}});
+            }else if(requestCode==EXPORT_OGD){
+                if(pendingExport==null)throw new java.io.IOException("Экспорт прерван. Повторите сохранение OGD.");
+                try(java.io.OutputStream out=getContentResolver().openOutputStream(data.getData(),"wt")){if(out==null)throw new java.io.IOException("Файл не открыт");out.write(pendingExport);out.flush();}
+                android.widget.Toast.makeText(this,"Файл Windows CPS (.ogd) сохранён",android.widget.Toast.LENGTH_LONG).show();
+            }else if(requestCode==OPEN_BOOT_IMAGE){
                 BootImagePicker.preview(this,data.getData(),payload->reviewChange("Изображение заставки",image->{byte[] updated=BootImage.replace(image.additionalSettings,payload);System.arraycopy(updated,0,image.additionalSettings,0,updated.length);image.bootAndVfos[0]=0;}));
             }else if(requestCode==COMPARE_PROJECT){
                 try(java.io.InputStream in=getContentResolver().openInputStream(data.getData())){compareProject(CodeplugProject.read(in),"выбранный файл");}

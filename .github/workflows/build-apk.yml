@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master", "fix/viewer-v0.5.5", "feature/callsign-read-editor", "feature/ui-simplification" ]
+    branches: [ "main", "master", "fix/viewer-v0.5.5", "feature/callsign-read-editor", "feature/ui-simplification", "feature/presets-ogd" ]
 
 permissions:
   contents: write

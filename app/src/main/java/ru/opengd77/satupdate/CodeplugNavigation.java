@@ -13,7 +13,7 @@ final class CodeplugNavigation {
             case CHANNELS:return new int[]{1,3,2,6};
             case CONTACTS:return new int[]{4,8,5};
             case SATELLITES:return new int[]{7,12};
-            case RADIO_SETTINGS:return new int[]{VOX,14,9};
+            case RADIO_SETTINGS:return new int[]{VOX,17,18,14,9};
             default:return new int[0];
         }
     }
@@ -45,6 +45,8 @@ final class CodeplugNavigation {
             case 13:return "DMR ID и позывной";
             case 14:return "Ограничения частот";
             case RADIO_SETTINGS:return "Настройки рации";
+            case 17:return "Общая мощность (Master)";
+            case 18:return "Общий шумоподавитель";
             case VOX:return "VOX и общие параметры";
             default:return "Обзор";
         }

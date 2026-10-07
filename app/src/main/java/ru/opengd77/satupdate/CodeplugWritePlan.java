@@ -5,7 +5,7 @@ import java.util.*;
 
 /** MD-9600 physical FLASH map. Existing field patches plus validated new record allocation. */
 final class CodeplugWritePlan {
-    static final String[] NAMES={"DMR ID и позывной", "Каналы", "Контакты DMR", "Контакты DTMF", "Зоны", "Загрузочный экран", "Группы приёма", "APRS", "Списки сканирования", "Настройки DTMF", "Настройки рации", "VFO A/B", "Границы частот"};
+    static final String[] NAMES={"DMR ID и позывной", "Каналы", "Контакты DMR", "Контакты DTMF", "Зоны", "Заставка / мелодия / спутники", "Группы приёма", "APRS", "Списки сканирования", "Настройки DTMF", "Настройки рации", "VFO A/B", "Границы частот"};
     static final int[][] BLOCKS={{1},{6,9},{10,7},{5},{8},{7,12},{11},{3},{4},{2},{1},{7},{0}};
     static boolean[] allSections(){boolean[] selection=new boolean[NAMES.length];Arrays.fill(selection,true);return selection;}
     // Boot shares a snapshot block with VFOs. Cached VFO state may change on entry to CPS.

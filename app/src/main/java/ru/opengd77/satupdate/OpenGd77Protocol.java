@@ -31,6 +31,11 @@ final class OpenGd77Protocol {
         return new FirmwareInfo(ver, type, rev, ByteUtil.u32le(data,40), (data[44]&255)|((data[45]&255)<<8));
     }
 
+    RadioMasterSettings readMasterSettings()throws IOException {
+        FirmwareInfo info=readFirmwareInfo();if(info.radioType!=5||(info.features&8)==0)throw new IOException("Прошивка не сообщает поддержку чтения общих настроек RUS CPS. Используйте меню настроек рации.");
+        try{return new RadioMasterSettings(readRaw(0x0b,0,64));}catch(IllegalArgumentException e){throw new IOException(e.getMessage(),e);}
+    }
+
     byte[] readFlash(int address, int length) throws IOException {
         return readMemory(0x01, address, length);
     }

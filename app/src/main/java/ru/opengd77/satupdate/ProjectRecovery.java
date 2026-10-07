@@ -27,7 +27,7 @@ final class ProjectRecovery {
                 boolean project=entry.getName().equals("before.ogcproj")||entry.getName().equals("after.ogcproj");
                 ByteArrayOutputStream data=project?new ByteArrayOutputStream():null;int n;
                 while((n=zip.read(buffer))!=-1){total+=n;if(total>16*1024*1024)throw new IOException("Резервная копия слишком большая");
-                    if(project){if(data.size()+n>400000)throw new IOException("Проект в резервной копии слишком большой");data.write(buffer,0,n);}}
+                    if(project){if(data.size()+n>600000)throw new IOException("Проект в резервной копии слишком большой");data.write(buffer,0,n);}}
                 if(project){CodeplugProject p=CodeplugProject.read(new ByteArrayInputStream(data.toByteArray()));
                     if(entry.getName().equals("before.ogcproj")){if(before!=null)throw new IOException("Повторный before.ogcproj");before=p;}
                     else{if(after!=null)throw new IOException("Повторный after.ogcproj");after=p;}}
