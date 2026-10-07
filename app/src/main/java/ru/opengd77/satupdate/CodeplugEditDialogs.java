@@ -17,7 +17,7 @@ final class CodeplugEditDialogs {
     private static final class Form {
         final Activity activity;final LinearLayout body;LinearLayout target;
         final Map<String,Field> fields=new LinkedHashMap<>();String group="";Spinner mode;boolean creating;
-        final String title; final Save save;
+        final String title; final Save save;AlertDialog shownDialog;
         Form(Activity a,String title,Save save){this.activity=a;this.title=title;this.save=save;
             body=new LinearLayout(a);body.setOrientation(LinearLayout.VERTICAL);int p=(int)(16*a.getResources().getDisplayMetrics().density);body.setPadding(p,p,p,p);target=body;
             label("Правки сохраняются в проекте на телефоне. Радиостанция не изменяется.");}
@@ -58,6 +58,7 @@ final class CodeplugEditDialogs {
             ScrollView scroll=new ScrollView(activity);scroll.addView(body);
             AlertDialog d=new AlertDialog.Builder(activity).setTitle(title).setView(scroll)
                     .setNegativeButton("Отмена",null).setPositiveButton(creating?"Создать":"Сохранить",null).create();
+            shownDialog=d;
             d.setOnShowListener(v->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w->{
                 try{
                     Map<String,String> values=new LinkedHashMap<>();
@@ -136,7 +137,7 @@ final class CodeplugEditDialogs {
         f.text("line1","Строка 1 (до 16 символов)",b.line1,false);f.text("line2","Строка 2 (до 16 символов)",b.line2,false);
         f.target=f.body;f.group="";
         Button image=new Button(a);image.setText("Загрузить изображение…");f.body.addView(image);
-        image.setOnClickListener(v->pickImage.run());
+        image.setOnClickListener(v->{if(f.shownDialog!=null)f.shownDialog.dismiss();pickImage.run();});
         mode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> parent,View v,int pos,long id){text.setVisibility(pos==1?View.VISIBLE:View.GONE);image.setVisibility(pos==0?View.VISIBLE:View.GONE);}public void onNothingSelected(AdapterView<?> parent){}});
         text.setVisibility(b.introMode==1?View.VISIBLE:View.GONE);image.setVisibility(b.introMode==0?View.VISIBLE:View.GONE);
         f.show();
