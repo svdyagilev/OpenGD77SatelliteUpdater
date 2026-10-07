@@ -20,7 +20,7 @@ import java.util.Locale;
 public class CodeplugViewerActivity extends ScreenActivity {
     private CodeplugModel model;
     private int activeCategory;
-    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604, COMPARE_PROJECT = 605, RESTORE_BACKUP = 606, OPEN_BOOT_IMAGE = 607, IMPORT_OGD = 608, EXPORT_OGD = 609;
+    private static final int OPEN_PROJECT = 601, SAVE_PROJECT = 602, IMPORT_CHANNELS = 603, EXPORT_CHANNELS = 604, COMPARE_PROJECT = 605, RESTORE_BACKUP = 606, OPEN_BOOT_IMAGE = 607;
     private final java.util.concurrent.ExecutorService toolsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private byte[] pendingExport;
     private android.app.ProgressDialog toolsProgress;
@@ -737,20 +737,10 @@ public class CodeplugViewerActivity extends ScreenActivity {
 
     private void projectMenu() {
         String[] items = {"Открыть файл проекта", "Сохранить копию проекта в файл",
-                "Отменить последнее изменение", "Вернуть исходное чтение", "Список изменений проекта", "Сравнить с другим проектом", "Проверить проект", "История версий", "Восстановить из резервной копии","Записать в радиостанцию","Импорт Windows CPS (.ogd)","Экспорт Windows CPS (.ogd)"};
+                "Отменить последнее изменение", "Вернуть исходное чтение", "Список изменений проекта", "Сравнить с другим проектом", "Проверить проект", "История версий", "Восстановить из резервной копии","Записать в радиостанцию"};
         new AlertDialog.Builder(this).setTitle("Проект").setItems(items, (dialog, which) -> {
             try {
                 if(which==9){writeRadio();return;}
-                if(which==10){
-                    if(CodeplugSession.project==null)throw new IllegalArgumentException("Сначала прочитайте рацию или откройте её проект .ogcproj");
-                    new AlertDialog.Builder(this).setTitle("Импорт OpenGD77 RUS (.ogd)").setMessage("Поддерживаемые каналы, контакты, зоны и настройки будут заменены данными файла. Модель рации и границы частот сохраняются. Перед применением откроется список изменений; запись в рацию выполняется отдельно.")
-                        .setNegativeButton("Отмена",null).setPositiveButton("Выбрать OGD",(d,w)->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),IMPORT_OGD)).show();return;
-                }
-                if(which==11){
-                    if(CodeplugSession.project==null)throw new IllegalArgumentException("Сначала откройте проект");
-                    pendingExport=WindowsOgd.encode(CodeplugSession.project);
-                    startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,"MD9600-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",Locale.US).format(new java.util.Date())+".ogd"),EXPORT_OGD);return;
-                }
                 if (which == 0) {
                     if (CodeplugSession.project != null && CodeplugSession.project.changedBytes() > 0) {
                         new AlertDialog.Builder(this).setTitle("Открыть другой проект?")
@@ -859,15 +849,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) { pendingExport=null; return; }
         try {
-            if(requestCode==IMPORT_OGD){
-                final android.net.Uri uri=data.getData();
-                android.widget.CheckBox vfos=new android.widget.CheckBox(this);vfos.setText("Импортировать VFO A/B (перед этим перечитайте рацию)");
-                new AlertDialog.Builder(this).setTitle("Импорт Windows CPS (.ogd)").setMessage("Каналы, зоны и другие поддерживаемые данные будут применены с предпросмотром. По умолчанию VFO рации сохраняются: их текущие частоты могут меняться между USB-сеансами. Если проект устарел, сначала сохраните его, перечитайте рацию и повторите импорт.").setView(vfos).setNegativeButton("Отмена",null).setPositiveButton("Предпросмотр",(d,w)->reviewOperation("Импорт Windows CPS (.ogd)",base->{try(java.io.InputStream in=getContentResolver().openInputStream(uri)){return WindowsOgd.importInto(base,WindowsOgd.read(in),vfos.isChecked());}})).show();
-            }else if(requestCode==EXPORT_OGD){
-                if(pendingExport==null)throw new java.io.IOException("Экспорт прерван. Повторите сохранение OGD.");
-                try(java.io.OutputStream out=getContentResolver().openOutputStream(data.getData(),"wt")){if(out==null)throw new java.io.IOException("Файл не открыт");out.write(pendingExport);out.flush();}
-                android.widget.Toast.makeText(this,"Файл Windows CPS (.ogd) сохранён",android.widget.Toast.LENGTH_LONG).show();
-            }else if(requestCode==OPEN_BOOT_IMAGE){
+            if(requestCode==OPEN_BOOT_IMAGE){
                 BootImagePicker.preview(this,data.getData(),payload->reviewChange("Изображение заставки",image->{byte[] updated=BootImage.replace(image.additionalSettings,payload);System.arraycopy(updated,0,image.additionalSettings,0,updated.length);image.bootAndVfos[0]=0;}));
             }else if(requestCode==COMPARE_PROJECT){
                 try(java.io.InputStream in=getContentResolver().openInputStream(data.getData())){compareProject(CodeplugProject.read(in),"выбранный файл");}

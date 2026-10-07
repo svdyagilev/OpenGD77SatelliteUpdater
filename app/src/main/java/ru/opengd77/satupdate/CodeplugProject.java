@@ -10,6 +10,7 @@ final class CodeplugProject {
     final CodeplugSnapshot original;
     final CodeplugSnapshot working;
     final RadioDriver.Identity identity;
+    // Retained only for lossless round-trips of projects saved by 0.8.11/0.8.12.
     final byte[] windowsTemplate;
     private final List<CodeplugSnapshot> undo;
     static final int[] LENGTHS = {0x60,0x28,0x78,512,0x1640,2016,0x1c10,0xe8,0xac00,0xc470,0x6000,0x1840,8192};
@@ -113,10 +114,16 @@ final class CodeplugProject {
             for(int i=0;i<b.length;i++){if(d.readInt()!=LENGTHS[i])throw new IOException("Неверный размер блока проекта");b[i]=new byte[LENGTHS[i]];d.readFully(b[i]);}
             ss[k]=fromBlocks(b);
         }
-        byte[] template=null;if(format==2){int size=d.readInt();if(size!=0&&size!=WindowsOgd.SIZE)throw new IOException("Неверный размер основы OGD");if(size>0){template=new byte[size];d.readFully(template);WindowsOgd.validate(template);}}
+        byte[] template=null;if(format==2){int size=d.readInt();if(size!=0&&size!=131072)throw new IOException("Неверный размер основы OGD");if(size>0){template=new byte[size];d.readFully(template);validateLegacyTemplate(template);}}
         if(d.available()!=0)throw new IOException("Лишние данные в проекте");
         try{return new CodeplugProject(ss[0],ss[1],id,new ArrayList<>(),template);}
         catch(IllegalArgumentException e){throw new IOException("Некорректный проект",e);}
+    }
+    private static void validateLegacyTemplate(byte[] bytes)throws IOException {
+        // Compatibility data embedded inside an old .ogcproj, never exposed as OGD import/export.
+        byte[] header="RUSSIAN".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        for(int i=0;i<header.length;i++)if(bytes[i]!=header[i])throw new IOException("Повреждённые данные прежнего проекта");
+        if(bytes[7]!=(byte)255)throw new IOException("Неподдерживаемые данные прежнего проекта");
     }
     private static byte[] digest(byte[] b) throws IOException {
         try{return MessageDigest.getInstance("SHA-256").digest(b);}
