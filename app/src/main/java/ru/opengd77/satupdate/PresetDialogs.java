@@ -17,10 +17,15 @@ final class PresetDialogs {
         power.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,new String[]{"От Master","100 мВт","250 мВт","500 мВт","750 мВт","1 Вт","5 Вт","10 Вт","25 Вт","40 Вт","+W−"}));body.addView(power);
         TextView zl=new TextView(a);zl.setText("Зона");body.addView(zl);List<String> zn=new ArrayList<>();zn.add("Создать новую зону");zn.add("Не добавлять в зону");for(CodeplugModel.Zone z:m.zones)zn.add(z.oneLine());Spinner zone=new Spinner(a);zone.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,zn));body.addView(zone);
         EditText zoneName=new EditText(a);zoneName.setSingleLine(true);zoneName.setText(ChannelPresets.PREFIX[plan]);zoneName.setHint("Имя новой зоны");body.addView(zoneName);
-        ScrollView options=new ScrollView(a);options.addView(body);options.setLayoutParams(new LinearLayout.LayoutParams(-1,(int)(240*a.getResources().getDisplayMetrics().density)));
-        AlertDialog dialog=new AlertDialog.Builder(a).setTitle(ChannelPresets.NAMES[plan]).setView(options).setMultiChoiceItems(names,selected,(d,i,on)->selected[i]=on).setNegativeButton("Отмена",null).setNeutralButton("Все / снять",null).setPositiveButton("Предпросмотр",null).create();
+        CheckBox[] rows=new CheckBox[hz.length];
+        for(int i=0;i<hz.length;i++){final int index=i;rows[i]=new CheckBox(a);rows[i].setText(names[i]);rows[i].setChecked(true);rows[i].setOnCheckedChangeListener((button,on)->selected[index]=on);body.addView(rows[i]);}
+        ScrollView options=new ScrollView(a);options.addView(body);
+        int height=Math.min((int)(450*a.getResources().getDisplayMetrics().density),(int)(a.getResources().getDisplayMetrics().heightPixels*0.60));
+        options.setLayoutParams(new android.view.ViewGroup.LayoutParams(-1,height));
+        AlertDialog dialog=new AlertDialog.Builder(a).setTitle(ChannelPresets.NAMES[plan]).setView(options).setNegativeButton("Отмена",null).setNeutralButton("Все / снять",null).setPositiveButton("Добавить",null).create();
         dialog.setOnShowListener(v->{
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(b->{boolean all=true;for(boolean on:selected)all&=on;Arrays.fill(selected,!all);for(int i=0;i<selected.length;i++)dialog.getListView().setItemChecked(i,!all);});
+            options.getLayoutParams().height=height;options.requestLayout();
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(b->{boolean all=true;for(boolean on:selected)all&=on;for(CheckBox row:rows)row.setChecked(!all);});
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b->{try{
                 List<Integer> nums=new ArrayList<>();for(int i=0;i<selected.length;i++)if(selected[i])nums.add(i);if(nums.isEmpty())throw new IllegalArgumentException("Выберите каналы");
                 int z=zone.getSelectedItemPosition(),target=z==0?-1:z==1?0:m.zones.get(z-2).index;String name=zoneName.getText().toString().trim();if(target<0&&(name.isEmpty()||name.length()>16))throw new IllegalArgumentException("Имя зоны: 1–16 символов");

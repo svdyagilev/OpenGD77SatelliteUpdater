@@ -40,4 +40,11 @@ public class WindowsOgdTest {
  @Test public void legacyProjectVersionOneStillOpens()throws Exception{
   byte[] bytes=clean().encode();java.io.DataOutputStream out;ByteArrayOutputStream raw=new ByteArrayOutputStream();byte[] payload=Arrays.copyOf(bytes,bytes.length-36);payload[7]=1;raw.write(payload);raw.write(java.security.MessageDigest.getInstance("SHA-256").digest(payload));assertEquals(0,CodeplugProject.read(new ByteArrayInputStream(raw.toByteArray())).changedBytes());
  }
+ @Test public void importPreservesRadioVfosUnlessExplicitlySelected()throws Exception{
+  CodeplugProject base=clean(),incoming=clean().edit(s->CodeplugLists.vfo(s,0,fields("rx","433.5","tx","433.5")));
+  byte[] bytes=WindowsOgd.encode(incoming);CodeplugProject usual=WindowsOgd.importInto(base,bytes);
+  assertArrayEquals(base.working.bootAndVfos,usual.working.bootAndVfos);
+  CodeplugProject full=WindowsOgd.importInto(base,bytes,true);assertFalse(Arrays.equals(base.working.bootAndVfos,full.working.bootAndVfos));
+  assertArrayEquals(CodeplugProject.blocks(base.original)[7],CodeplugProject.blocks(full.original)[7]);
+ }
 }

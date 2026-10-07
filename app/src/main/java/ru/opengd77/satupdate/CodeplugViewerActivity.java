@@ -860,7 +860,9 @@ public class CodeplugViewerActivity extends ScreenActivity {
         if (resultCode != RESULT_OK || data == null || data.getData() == null) { pendingExport=null; return; }
         try {
             if(requestCode==IMPORT_OGD){
-                final android.net.Uri uri=data.getData();reviewOperation("Импорт Windows CPS (.ogd)",base->{try(java.io.InputStream in=getContentResolver().openInputStream(uri)){return WindowsOgd.importInto(base,WindowsOgd.read(in));}});
+                final android.net.Uri uri=data.getData();
+                android.widget.CheckBox vfos=new android.widget.CheckBox(this);vfos.setText("Импортировать VFO A/B (перед этим перечитайте рацию)");
+                new AlertDialog.Builder(this).setTitle("Импорт Windows CPS (.ogd)").setMessage("Каналы, зоны и другие поддерживаемые данные будут применены с предпросмотром. По умолчанию VFO рации сохраняются: их текущие частоты могут меняться между USB-сеансами. Если проект устарел, сначала сохраните его, перечитайте рацию и повторите импорт.").setView(vfos).setNegativeButton("Отмена",null).setPositiveButton("Предпросмотр",(d,w)->reviewOperation("Импорт Windows CPS (.ogd)",base->{try(java.io.InputStream in=getContentResolver().openInputStream(uri)){return WindowsOgd.importInto(base,WindowsOgd.read(in),vfos.isChecked());}})).show();
             }else if(requestCode==EXPORT_OGD){
                 if(pendingExport==null)throw new java.io.IOException("Экспорт прерван. Повторите сохранение OGD.");
                 try(java.io.OutputStream out=getContentResolver().openOutputStream(data.getData(),"wt")){if(out==null)throw new java.io.IOException("Файл не открыт");out.write(pendingExport);out.flush();}

@@ -89,7 +89,7 @@ public class FullEditorTest {
     }
     @Test public void staleVfoDependencyBlocksContactDeletionBeforeBackup()throws Exception{
         CodeplugProject p=remove(baseline(),DMR,1);CodeplugWritePlan plan=new CodeplugWritePlan(p,CodeplugWritePlan.allSections());
-        CodeplugWritePlanTest.Memory m=new CodeplugWritePlanTest.Memory(p);m.data[0x7518+0x78+16]^=1;
+        CodeplugWritePlanTest.Memory m=new CodeplugWritePlanTest.Memory(p);m.data[0x7518+0x78+46]^=1;
         try{execute(plan,m);fail();}catch(IOException expected){}
         assertEquals(0,m.writes);assertFalse(m.backedUp);
     }

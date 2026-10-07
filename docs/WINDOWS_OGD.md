@@ -11,3 +11,7 @@ Boot image (TLV 1, 1024 bytes), melody (TLV 2, 512 bytes) and satellites (TLV 3,
 Export refuses occupied zone slots #69–250 or additional data outside the file's 4512-byte capacity. It does not silently truncate them. File bytes outside the mapped regions are retained from the imported OGD template. A new export without a template initializes unused bytes to FF. Native project format 2 stores the template with the existing SHA-256 checksum; format 1 projects remain readable. Older Android CPS versions cannot open format 2.
 
 Hardware round-trip through Windows CPS and the radio remains to be tested by the user.
+
+## v0.8.12: VFO and preflight
+
+Import preserves VFO A/B by default. The import dialog offers an explicit VFO checkbox; reread the radio first when importing them. Live VFO tuning can change during CPS entry. Preflight checks each edited VFO field as a whole (including unchanged bytes of a multi-byte field) and all dependency references; unrelated tuning and reserved gap bytes are preserved from the current full sector. Boot settings and quick-key checks remain strict. Genuine conflicts stop before backup/writes and include the first differing absolute address. A stale project must be saved, then the radio reread and OGD imported again.

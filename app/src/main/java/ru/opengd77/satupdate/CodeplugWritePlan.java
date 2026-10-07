@@ -43,6 +43,24 @@ final class CodeplugWritePlan {
     }
     private boolean checkVfos;
     private int checkLength(int block,byte[] data){return block==7&&!checkVfos?0x48:data.length;}
+    private boolean checksByte(int block,int offset){
+        if(block!=7||offset<0x48)return true;
+        // The gap contains no supported fields. VFO frequency/state may change on CPS entry.
+        if(offset<0x78)return false;
+        int vfo=0x78+((offset-0x78)/56)*56,local=(offset-0x78)%56;
+        int start=local,end=local+1;
+        if(local<16){start=0;end=16;}
+        else if(local<24){start=16+((local-16)/4)*4;end=start+4;}
+        else if(local>=32&&local<36){start=32+((local-32)/2)*2;end=start+2;}
+        else if(local>=39&&local<42){start=39;end=42;}
+        else if(local==46||local==47){start=46;end=48;}
+        // Coordinates span three non-contiguous bytes; preserve them as one field.
+        int[][] coordinates={{26,28,29},{30,31,36}};
+        for(int[] field:coordinates)for(int member:field)if(local==member){for(int part:field)if(changes.containsKey(ADDRESS[7]+vfo+part))return true;}
+        for(int part=start;part<end;part++)if(changes.containsKey(ADDRESS[7]+vfo+part))return true;
+        // Deletion dependencies require stable references, not unrelated live VFO tuning.
+        return checkVfos&&(local==43||local==45||local==46||local==47);
+    }
     static boolean belongs(int section,int block,int i){
         if(block==1)return section==0?i<12:i==19;
         if(block==7){
@@ -79,8 +97,10 @@ final class CodeplugWritePlan {
          // identity anchor even for contact-only writes
         for(int b:checks){
             progress.onMessage("Проверка исходных данных: 0x"+Integer.toHexString(ADDRESS[b]));
-            if(!Arrays.equals(Arrays.copyOf(source[b],checkLength(b,source[b])),memory.read(ADDRESS[b],checkLength(b,source[b]))))
-                throw new IOException("Данные в рации отличаются от исходного проекта (0x"+Integer.toHexString(ADDRESS[b])+"). Запись не начата. Сохраните проект и перечитайте рацию.");
+            int length=checkLength(b,source[b]);byte[] current=memory.read(ADDRESS[b],length);
+            if(current.length!=length)throw new IOException("Неполное чтение исходных данных");
+            for(int i=0;i<length;i++)if(checksByte(b,i)&&source[b][i]!=current[i])
+                throw new IOException("Данные в рации отличаются от исходного проекта (блок 0x"+Integer.toHexString(ADDRESS[b])+", адрес 0x"+Integer.toHexString(ADDRESS[b]+i)+", проект="+(source[b][i]&255)+", рация="+(current[i]&255)+"). Запись не начата. Сохраните проект, перечитайте рацию и повторите импорт/правки.");
         }
         SortedMap<Integer,Sector> sectors=new TreeMap<>();
         for(int address:changes.keySet()){
@@ -93,7 +113,7 @@ final class CodeplugWritePlan {
         // Check again against the exact sector image that will be preserved/written.
         for(Sector sector:sectors.values())for(int b:checks){
             int start=Math.max(sector.address,ADDRESS[b]),end=Math.min(sector.address+4096,ADDRESS[b]+checkLength(b,source[b]));
-            for(int addr=start;addr<end;addr++)if(sector.before[addr-sector.address]!=source[b][addr-ADDRESS[b]])
+            for(int addr=start;addr<end;addr++)if(checksByte(b,addr-ADDRESS[b])&&sector.before[addr-sector.address]!=source[b][addr-ADDRESS[b]])
                 throw new IOException("Данные изменились во время проверки. Запись не начата.");
         }
         for(Map.Entry<Integer,Byte> e:changes.entrySet())sectors.get(e.getKey()&~4095).after[e.getKey()&4095]=e.getValue();
