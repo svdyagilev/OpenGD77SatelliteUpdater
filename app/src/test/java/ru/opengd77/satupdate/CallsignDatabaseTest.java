@@ -72,4 +72,29 @@ public class CallsignDatabaseTest {
         damaged=d.first.clone();ByteUtil.putU32le(damaged,8,CallsignDatabase.capacity(16)+1L);
         try{CallsignDatabase.fromRadio(damaged,d.second);fail();}catch(IOException expected){}
     }
+
+    @Test public void structuredFieldsKeepMultiwordBoundariesAndUseRadioEncoding()throws Exception {
+        String[] fields={"UN6QCW","Сергей","Талдыкорган","Жетысу","Republic of Kazakhstan"};
+        CallsignDatabase.Entry entry=CallsignDatabase.structuredEntry("4010151",fields,48," ");
+        assertArrayEquals(fields,entry.details);assertEquals("UN6QCW Sergey Taldykorgan Zhetysu Republic of Kazakhstan",entry.text);
+        CallsignDatabase d=CallsignDatabase.empty(48).withEntry(null,entry);
+        assertEquals(entry.encoded,CallsignDatabase.fromRadio(d.first,d.second).entries.get(0).text);
+        assertArrayEquals(fields,d.entries.get(0).details);fields[0]="Changed";assertEquals("UN6QCW",entry.details[0]);
+        try{CallsignDatabase.structuredEntry("4010151",new String[]{"","Name","City","State","Country"},48," ");fail();}catch(IOException expected){}
+    }
+    @Test public void csvKeepsSelectedDetailsAndDoesNotInventRadioBoundaries()throws Exception {
+        CallsignDatabase d=read("ID,CALLSIGN,FIRST_NAME,LAST_NAME,CITY,STATE,COUNTRY\n4010001,UN1A,John,Doe,New York,New York,United States\n","",48);
+        assertArrayEquals(new String[]{"UN1A","John Doe","New York","New York","United States"},d.entries.get(0).details);
+        assertNull(CallsignDatabase.fromRadio(d.first,d.second).entries.get(0).details);
+        CallsignDatabase.Options o=new CallsignDatabase.Options("",new boolean[]{true,false,false,false,true}," ",48);
+        CallsignDatabase filtered=CallsignDatabase.read(new StringReader("ID,CALLSIGN,NAME,LAST_NAME,CITY,COUNTRY\n4010001,UN1A,John,Hidden,Hidden,United States\n"),o);
+        assertArrayEquals(new String[]{"UN1A","John","","","United States"},filtered.entries.get(0).details);
+    }
+
+    @Test public void unchangedCsvFieldsKeepOriginalSeparatorsWhenOnlyIdChanges()throws Exception {
+        CallsignDatabase.Options o=new CallsignDatabase.Options("",new boolean[]{true,true,true,true,true},".",48);
+        CallsignDatabase d=CallsignDatabase.read(new StringReader("ID,CALLSIGN,NAME,LAST_NAME,CITY\n4010001,UN1A,John,Doe,New York\n"),o);
+        CallsignDatabase.Entry old=d.entries.get(0),edited=CallsignDatabase.structuredReplacement("4010002",old.details,48,".",old);
+        assertEquals("UN1A.John.Doe.New York",edited.text);assertEquals(4010002,edited.id);
+    }
 }

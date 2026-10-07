@@ -129,19 +129,39 @@ public class CallsignActivity extends ScreenActivity {
     private void editEntry(CallsignDatabase.Entry existing){
         if(database==null){log("Сначала прочитайте базу из рации или загрузите CSV.");return;}
         LinearLayout box=new LinearLayout(this);box.setOrientation(1);int pad=(int)(12*getResources().getDisplayMetrics().density);box.setPadding(pad,0,pad,0);
+        label(box,"DMR ID",14);
         EditText id=new EditText(this);id.setSingleLine(true);id.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);id.setHint("DMR ID");box.addView(id);
-        EditText value=new EditText(this);value.setHint("Текст записи: позывной и дополнительные поля");value.setMinLines(2);value.setMaxLines(5);value.setGravity(android.view.Gravity.TOP);value.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);box.addView(value);
-        if(existing!=null){id.setText(Integer.toString(existing.id));value.setText(existing.text);}
+        boolean structured=existing==null||existing.details!=null;
+        EditText[] parts=new EditText[5];EditText value=new EditText(this);
+        if(structured){
+            label(box,"Позывной обязателен. Остальные поля можно оставить пустыми.",14);
+            String[] names={"Позывной","Имя","Город","Область","Страна"};
+            for(int i=0;i<5;i++){label(box,names[i],14);parts[i]=new EditText(this);parts[i].setSingleLine(true);parts[i].setHint(names[i]);box.addView(parts[i]);if(existing!=null)parts[i].setText(existing.details[i]);}
+        }else{
+            label(box,"В рации поля хранятся одной строкой. Границы имени, города, области и страны не сохранены; строка редактируется целиком.",14);
+            value.setHint("Позывной и дополнительные данные");value.setMinLines(2);value.setMaxLines(5);box.addView(value);value.setText(existing.text);
+        }
+        if(existing!=null)id.setText(Integer.toString(existing.id));
+        TextView encoded=label(box,"",14);
+        Runnable update=()->{try{
+            String[] data=new String[5];if(structured)for(int i=0;i<5;i++)data[i]=parts[i].getText().toString();
+            CallsignDatabase.Entry entry=structured?CallsignDatabase.structuredReplacement(id.getText().toString(),data,database.chars,separator.getSelectedItemPosition()==0?" ":".",existing):CallsignDatabase.manualEntry(id.getText().toString(),value.getText().toString(),database.chars);
+            encoded.setText("Строка для рации ("+database.chars+" символов):\n"+entry.encoded+(entry.encoded.length()<entry.text.length()?"…":""));
+        }catch(Exception e){encoded.setText(e.getMessage());}};
+        TextWatcher watcher=new TextWatcher(){public void beforeTextChanged(CharSequence t,int st,int count,int after){}public void onTextChanged(CharSequence t,int st,int before,int count){update.run();}public void afterTextChanged(Editable e){}};
+        id.addTextChangedListener(watcher);if(structured)for(EditText part:parts)part.addTextChangedListener(watcher);else value.addTextChangedListener(watcher);update.run();
+        ScrollView scroll=new ScrollView(this);scroll.addView(box);
         String title=existing==null?"Добавить запись":"Изменить запись";
-        AlertDialog.Builder builder=new AlertDialog.Builder(this).setTitle(title).setView(box).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",null);
+        AlertDialog.Builder builder=new AlertDialog.Builder(this).setTitle(title).setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",null);
         if(existing!=null)builder.setNeutralButton("Удалить",null);
         AlertDialog dialog=builder.create();
         dialog.setOnShowListener(ignored->{
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
                 try {
-                    CallsignDatabase.Entry next=CallsignDatabase.manualEntry(id.getText().toString(),value.getText().toString(),database.chars);
+                    String[] data=new String[5];if(structured)for(int i=0;i<5;i++)data[i]=parts[i].getText().toString();
+                    CallsignDatabase.Entry next=structured?CallsignDatabase.structuredReplacement(id.getText().toString(),data,database.chars,separator.getSelectedItemPosition()==0?" ":".",existing):CallsignDatabase.manualEntry(id.getText().toString(),value.getText().toString(),database.chars);
                     database=database.withEntry(existing==null?null:existing.id,next);sourceLabel+=" • есть локальные правки";updateSummary();showPreview();setBusy(false);status.setText("Изменение сохранено только в подготовленной базе. Нажмите «Записать базу в рацию», чтобы применить его.");dialog.dismiss();
-                }catch(Exception e){value.setError(e.getMessage());}
+                }catch(Exception e){encoded.setText(e.getMessage());}
             });
             if(existing!=null)dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Удалить запись?").setMessage("ID "+existing.id+" будет удалён только из подготовленной базы. В рацию изменения попадут после отдельной записи.").setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->{
                 try{database=database.withoutEntry(existing.id);sourceLabel+=" • есть локальные правки";updateSummary();showPreview();setBusy(false);status.setText("Запись удалена из подготовленной базы. В рации она пока не изменена.");dialog.dismiss();}

@@ -24,7 +24,9 @@ public class CodeplugViewerActivity extends ScreenActivity {
     private final java.util.concurrent.ExecutorService toolsWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private byte[] pendingExport;
     private android.app.ProgressDialog toolsProgress;
-    private Button navigationButton;
+    private TextView sectionTitle;
+    private final java.util.Set<Integer> selectedChannels=new java.util.LinkedHashSet<>();
+    private boolean selectingChannels;
     private boolean searching;
     private EditText projectSearch;
     private ListView listView;
@@ -42,8 +44,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
         }
         model = CodeplugSession.current;
         summaryText = findViewById(R.id.codeplugSummaryText);
-        navigationButton=findViewById(R.id.codeplugNavigationButton);
-        navigationButton.setOnClickListener(v -> navigationMenu());
+        sectionTitle=findViewById(R.id.codeplugSectionTitle);
         projectSearch=findViewById(R.id.projectSearchEdit);
         listView = findViewById(R.id.codeplugList);
         findViewById(R.id.codeplugCloseButton).setOnClickListener(v -> onBackPressed());
@@ -83,7 +84,15 @@ public class CodeplugViewerActivity extends ScreenActivity {
             if(position>=visibleObjects.size())return;
             Object item=visibleObjects.get(position);
             if(item instanceof CodeplugNavigation.Link)showCategory(((CodeplugNavigation.Link)item).page);
+            else if(selectingChannels&&item instanceof CodeplugModel.Channel){toggleChannel((CodeplugModel.Channel)item,position);}
             else showDetails(item);
+        });
+        listView.setOnItemLongClickListener((parent,view,position,id)->{
+            if(searching||activeCategory!=1||position>=visibleObjects.size()||!(visibleObjects.get(position) instanceof CodeplugModel.Channel))return false;
+            selectingChannels=true;
+            renderChannelSelection();
+            toggleChannel((CodeplugModel.Channel)visibleObjects.get(position),position);
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);return true;
         });
     }
 
@@ -94,6 +103,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
     }
 
     @Override public void onBackPressed() {
+        if(selectingChannels){clearChannelSelection();showCategory(activeCategory);return;}
         if(searching){toggleSearch();return;}
         int parent=CodeplugNavigation.parent(activeCategory);
         if(parent<0)returnToMain();else showCategory(parent);
@@ -104,6 +114,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
     }
 
     private void toggleSearch() {
+        if(selectingChannels){clearChannelSelection();showCategory(activeCategory);}
         searching=!searching;
         findViewById(R.id.projectSearchRow).setVisibility(searching?View.VISIBLE:View.GONE);
         ((Button)findViewById(R.id.searchToggleButton)).setText(searching?"Закрыть":"Поиск");
@@ -116,29 +127,48 @@ public class CodeplugViewerActivity extends ScreenActivity {
     }
 
     private void editorMenu() {
-        String[] items={"Проект: открыть, сохранить, отменить","Записать в радиостанцию","База позывных","Сведения о проекте","Инструменты каналов и зон"};
+        if(selectingChannels){channelSelectionMenu();return;}
+        String[] items={"Проект: открыть, сохранить, отменить","Записать в радиостанцию","Инструменты каналов и зон"};
         new AlertDialog.Builder(this).setTitle("Действия").setItems(items,(dialog,which)->{
             if(which==0)projectMenu();
             else if(which==1){
                 if(model==null){problem(new IllegalStateException("Сначала откройте или прочитайте проект"));return;}
                 startActivity(new Intent(this,CodeplugWriteActivity.class));finish();
-            }else if(which==2)startActivity(new Intent(this,CallsignActivity.class));
-            else if(which==4)channelTools();
-            else if(model!=null&&CodeplugSession.project!=null)new AlertDialog.Builder(this).setTitle("Сведения о проекте")
-                    .setMessage(model.general.radioName+" • DMR ID "+model.general.dmrId+"\n"+model.compactSummary()
-                            +"\nИзменено байтов: "+CodeplugSession.project.changedBytes()+"\nПравки автоматически сохраняются на телефоне.")
-                    .setPositiveButton("OK",null).show();
+            }else channelTools();
         }).show();
     }
 
-    private void navigationMenu() {
-        int[] pages={0,100,101,102,103};
-        String[] names=new String[pages.length];
-        for(int i=0;i<pages.length;i++)names[i]=CodeplugNavigation.title(pages[i]);
-        new AlertDialog.Builder(this).setTitle("Обзор и разделы").setItems(names,(dialog,which)->{
-            if(searching)toggleSearch();
-            showCategory(pages[which]);
-        }).setNegativeButton("Закрыть",null).show();
+    private void clearChannelSelection(){selectingChannels=false;selectedChannels.clear();listView.clearChoices();listView.setChoiceMode(ListView.CHOICE_MODE_NONE);}
+    private void toggleChannel(CodeplugModel.Channel channel,int position){
+        if(!selectedChannels.add(channel.index))selectedChannels.remove(channel.index);
+        listView.setItemChecked(position,selectedChannels.contains(channel.index));
+        summaryText.setText("Выбрано: "+selectedChannels.size()+" • Действия для выбранных");
+    }
+    private void renderChannelSelection(){
+        int first=listView.getFirstVisiblePosition();View top=listView.getChildAt(0);int offset=top==null?0:top.getTop();
+        List<String> rows=new ArrayList<>();for(Object item:visibleObjects)rows.add(((CodeplugModel.Channel)item).oneLine());
+        listView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
+        listView.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_multiple_choice,rows));
+        for(int i=0;i<visibleObjects.size();i++)listView.setItemChecked(i,selectedChannels.contains(((CodeplugModel.Channel)visibleObjects.get(i)).index));
+        if(top!=null)listView.setSelectionFromTop(first,offset);
+        summaryText.setText("Выбрано: "+selectedChannels.size()+" • Действия для выбранных");
+    }
+    private void channelSelectionMenu(){
+        String[] items={"Массовая правка","Добавить в зону","Удалить выбранные каналы","Выбрать все / снять выбор","Завершить выделение"};
+        new AlertDialog.Builder(this).setTitle("Выбрано каналов: "+selectedChannels.size()).setItems(items,(d,which)->{
+            if(which==4){clearChannelSelection();showCategory(activeCategory);return;}
+            if(which==3){if(selectedChannels.size()==visibleObjects.size())selectedChannels.clear();else for(Object item:visibleObjects)selectedChannels.add(((CodeplugModel.Channel)item).index);renderChannelSelection();return;}
+            List<Integer> ids=new ArrayList<>(selectedChannels);
+            if(ids.isEmpty()){problem(new IllegalArgumentException("Выберите хотя бы один канал"));return;}
+            if(which==0)CodeplugEditDialogs.bulkChannels(this,model,ids,change->reviewChange("Массовая правка: "+ids.size()+" каналов",change));
+            else if(which==1)pickRecord(true,item->{CodeplugModel.Zone zone=(CodeplugModel.Zone)item;reviewChange("Добавление в зону «"+zone.name+"»",image->{
+                CodeplugModel.Zone current=(CodeplugModel.Zone)CodeplugRecords.record(OpenGd77CodeplugDecoder.decode(image),CodeplugRecords.Kind.ZONE,zone.index);
+                List<Integer> members=new ArrayList<>(current.channelIndices);for(int id:ids)if(!members.contains(id))members.add(id);
+                java.util.Map<String,String> values=new java.util.LinkedHashMap<>();values.put("members",CodeplugRecords.join(members));CodeplugEditor.zone(image,zone.index,values);
+            });});
+            else new AlertDialog.Builder(this).setTitle("Удалить "+ids.size()+" каналов?").setMessage("Ссылки на выбранные каналы будут очищены. Перед применением откроется список изменений; удаление можно отменить.")
+                .setNegativeButton("Отмена",null).setPositiveButton("Подготовить удаление",(dialog,w)->reviewOperation("Удаление "+ids.size()+" каналов",base->base.edit(image->{for(int id:ids)CodeplugRecords.delete(image,base.original,CodeplugRecords.Kind.CHANNEL,id);}))).show();
+        }).show();
     }
 
     private String sectionDetail(int page) {
@@ -185,8 +215,9 @@ public class CodeplugViewerActivity extends ScreenActivity {
     }
 
     private void showCategory(int category) {
+        clearChannelSelection();
         activeCategory = category;
-        navigationButton.setText(CodeplugNavigation.title(category)+" ▾");
+        sectionTitle.setText(CodeplugNavigation.title(category));
         refreshSummary();
         refreshAddButton();
         visibleObjects.clear();
@@ -298,6 +329,8 @@ public class CodeplugViewerActivity extends ScreenActivity {
         searchText(rows,"Заставка, строка 1",model.boot.line1,query);
         searchText(rows,"Заставка, строка 2",model.boot.line2,query);
         listView.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,rows));
+        sectionTitle.setText("Поиск по проекту");
+        summaryText.setVisibility(View.VISIBLE);
         summaryText.setText("Найдено: "+rows.size()+" • весь проект");
     }
 
@@ -351,6 +384,9 @@ public class CodeplugViewerActivity extends ScreenActivity {
     }
 
     private void showDeviceInfo(List<String> rows) {
+        addText(rows,"Позывной: "+model.general.radioName+" • DMR ID "+model.general.dmrId);
+        addText(rows,model.compactSummary());
+        if(CodeplugSession.project!=null)addText(rows,"Изменено байтов: "+CodeplugSession.project.changedBytes()+"\nПравки автоматически сохраняются на телефоне.");
         CodeplugModel.DeviceInfo d = model.deviceInfo;
         addText(rows, "Модель (USB): " + available(d.liveModel));
         addText(rows, "Строка идентификации FW (USB): " + available(d.liveFirmware));
@@ -505,7 +541,7 @@ public class CodeplugViewerActivity extends ScreenActivity {
                 runOnUiThread(()->{
                     if(cancelled.get()||isFinishing()||isDestroyed())return;progress.dismiss();
                     if(changedBytes==0){new AlertDialog.Builder(this).setMessage("Изменений нет. Проверьте выбранные поля и режимы каналов.").setPositiveButton("OK",null).show();return;}
-                    String summary="Будет добавлено каналов: "+(after.channels.size()-before.channels.size())+"\nБудет добавлено зон: "+(after.zones.size()-before.zones.size())
+                    String summary="Изменение числа каналов: "+(after.channels.size()-before.channels.size())+"\nИзменение числа зон: "+(after.zones.size()-before.zones.size())
                             +"\nИзменено байтов: "+changedBytes+"\n\nПравки будут применены к проекту на телефоне и отменяются одним шагом через меню «Проект».";
                     ProjectReportDialogs.show(this,title,summary,new ProjectDiff(base.working,next.working),()->{
                         try{if(CodeplugSession.project!=base)throw new IllegalStateException("Проект изменился. Подготовьте операцию заново.");installProject(next);}
@@ -646,19 +682,20 @@ public class CodeplugViewerActivity extends ScreenActivity {
         boolean loaded = model != null && CodeplugSession.project != null;
         refreshAddButton();
         listView.setVisibility(loaded ? View.VISIBLE : View.GONE);
-        navigationButton.setEnabled(loaded);
+        sectionTitle.setVisibility(loaded?View.VISIBLE:View.GONE);
         findViewById(R.id.searchToggleButton).setVisibility(loaded?View.VISIBLE:View.GONE);
         if(!loaded)findViewById(R.id.projectSearchRow).setVisibility(View.GONE);
         findViewById(R.id.editGeneralButton).setVisibility(loaded && (activeCategory == 13 || activeCategory == 10 || activeCategory == 9 || activeCategory == 14 || activeCategory == 16) ? View.VISIBLE : View.GONE);
         if (!loaded) {
+            summaryText.setVisibility(View.VISIBLE);
             summaryText.setMaxLines(4);
-            summaryText.setText("Откройте проект через меню ⋮ или прочитайте радиостанцию с главного экрана.");
+            summaryText.setText("Откройте проект через «Действия» или прочитайте радиостанцию с главного экрана.");
             return;
         }
         summaryText.setMaxLines(1);
         summaryText.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        String name = model.general.radioName.isEmpty() ? "Проект" : model.general.radioName;
-        summaryText.setText(name + " • " + (CodeplugSession.project.changedBytes()>0?"есть правки":"без правок"));
+        summaryText.setText(activeCategory==1?"Удерживайте канал для массового выделения":"");
+        summaryText.setVisibility(activeCategory==1?View.VISIBLE:View.GONE);
     }
 
     private void commitEdit(CodeplugProject.Change change) throws Exception {

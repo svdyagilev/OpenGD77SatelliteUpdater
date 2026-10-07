@@ -283,19 +283,27 @@ final class CodeplugEditDialogs {
     static void zoneOrder(Activity a,CodeplugModel.Zone zone,CodeplugModel model,Commit commit){
         List<Integer> order=new ArrayList<>(zone.channelIndices);
         LinearLayout body=new LinearLayout(a);body.setOrientation(LinearLayout.VERTICAL);
-        ListView list=new ListView(a);body.addView(list,new LinearLayout.LayoutParams(-1,(int)(a.getResources().getDisplayMetrics().density*280)));
-        TextView help=new TextView(a);help.setText("Нажмите канал: переместить вверх/вниз или удалить из зоны. Сами каналы не удаляются.");body.addView(help);
-        Runnable refresh=()->{
-            List<String> labels=new ArrayList<>();for(int id:order){String name="#"+id;for(CodeplugModel.Channel c:model.channels)if(c.index==id)name+=" · "+c.name;labels.add(name);}
-            list.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_list_item_1,labels));
-        };refresh.run();
-        list.setOnItemClickListener((parent,view,position,id)->new AlertDialog.Builder(a).setTitle("Канал #"+order.get(position))
-            .setItems(new String[]{"Вверх","Вниз","Убрать из зоны"},(dialog,which)->{
-                if(which==0&&position>0)Collections.swap(order,position,position-1);
-                else if(which==1&&position+1<order.size())Collections.swap(order,position,position+1);
-                else if(which==2)order.remove(position);
-                refresh.run();
-            }).show());
+        TextView help=new TextView(a);
+        ChannelOrderList list=new ChannelOrderList(a,order,model,()->{});
+        Runnable refresh=()->{list.refresh();help.setText("Нажимайте каналы для выделения. Удерживайте и тяните канал или выделенную группу; у края список прокручивается. Выбрано: "+list.selected.size());};
+        body.addView(help);
+        body.addView(list,new LinearLayout.LayoutParams(-1,(int)Math.min(a.getResources().getDisplayMetrics().density*320,a.getResources().getDisplayMetrics().heightPixels*0.4f)));
+        LinearLayout actions=new LinearLayout(a);body.addView(actions);
+        Button remove=new Button(a);remove.setText("Убрать выбранные");actions.addView(remove,new LinearLayout.LayoutParams(0,-2,1));
+        remove.setOnClickListener(v->{order.removeAll(list.selected);list.selected.clear();refresh.run();});
+        Button move=new Button(a);move.setText("К позиции…");actions.addView(move,new LinearLayout.LayoutParams(0,-2,1));
+        move.setOnClickListener(v->{
+            if(list.selected.isEmpty())return;
+            EditText position=new EditText(a);position.setInputType(InputType.TYPE_CLASS_NUMBER);position.setHint("Позиция 1…"+order.size());
+            AlertDialog mover=new AlertDialog.Builder(a).setTitle("Переместить выбранные").setView(position).setNegativeButton("Отмена",null).setPositiveButton("Переместить",null).create();
+            mover.setOnShowListener(w->mover.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{try{
+                int target=Integer.parseInt(position.getText().toString())-1;if(target<0||target>=order.size())throw new IllegalArgumentException();
+                int source=-1;for(int i=0;i<order.size();i++)if(list.selected.contains(order.get(i))){source=i;break;}
+                ChannelOrder.move(order,list.selected,source,target);refresh.run();mover.dismiss();
+            }catch(Exception e){position.setError("Укажите позицию от 1 до "+order.size());}}));mover.show();
+        });
+        list.setOnItemClickListener((parent,view,index,id)->{int channel=order.get(index);if(!list.selected.add(channel))list.selected.remove(channel);refresh.run();});
+        refresh.run();
         AlertDialog dialog=new AlertDialog.Builder(a).setTitle("Порядок каналов: "+zone.name).setView(body)
             .setNeutralButton("Добавить каналы",null).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",null).create();
         dialog.setOnShowListener(v->{

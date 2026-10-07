@@ -20,7 +20,11 @@ final class CallsignDatabase {
         }
         boolean accepts(String id) {if(region.isEmpty())return true;for(String prefix:region.split("[ ,;]+"))if(id.startsWith(prefix))return true;return false;}
     }
-    static final class Entry {final int id;final String text,encoded;Entry(int id,String text,String encoded){this.id=id;this.text=text;this.encoded=encoded;}}
+    static final class Entry {
+        final int id;final String text,encoded;final String[] details;
+        Entry(int id,String text,String encoded){this(id,text,encoded,null);}
+        Entry(int id,String text,String encoded,String[] details){this.id=id;this.text=text;this.encoded=encoded;this.details=details==null?null:details.clone();}
+    }
     final List<Entry> entries;final byte[] first,second;final int chars,recordSize,sourceRows,duplicates,skipped;
     private CallsignDatabase(List<Entry> entries, int chars,int sourceRows,int duplicates,int skipped) {
         this.entries=Collections.unmodifiableList(entries);this.chars=chars;this.recordSize=3+chars*3/4;
@@ -76,6 +80,20 @@ final class CallsignDatabase {
         if(charsForRecordSize(3+chars*3/4)!=chars)throw new IOException("Неподдерживаемая длина записи");
         return new Entry(id,clean,clean.length()>chars?clean.substring(0,chars):clean);
     }
+    static Entry structuredEntry(String idText,String[] fields,int chars,String separator)throws IOException {
+        if(fields==null||fields.length!=5||(!" ".equals(separator)&&!".".equals(separator)))throw new IOException("Параметры записи");
+        String[] details=new String[5];for(int i=0;i<5;i++)details[i]=fields[i]==null?"":fields[i].trim().replaceAll("\\s+"," ");
+        if(details[0].isEmpty()||details[0].contains(" "))throw new IOException("Введите позывной без пробелов");
+        StringBuilder text=new StringBuilder(details[0]);for(int i=1;i<5;i++)if(!details[i].isEmpty())text.append(separator).append(details[i]);
+        Entry entry=manualEntry(idText,text.toString(),chars);return new Entry(entry.id,entry.text,entry.encoded,details);
+    }
+    static Entry structuredReplacement(String idText,String[] fields,int chars,String separator,Entry existing)throws IOException {
+        Entry next=structuredEntry(idText,fields,chars,separator);
+        if(existing!=null&&Arrays.equals(next.details,existing.details)){
+            Entry unchanged=manualEntry(idText,existing.text,chars);return new Entry(unchanged.id,unchanged.text,unchanged.encoded,next.details);
+        }
+        return next;
+    }
     CallsignDatabase withEntry(Integer oldId,Entry replacement)throws IOException {
         List<Entry> next=new ArrayList<>(entries.size()+1);boolean foundOld=false;
         for(Entry e:entries) {
@@ -111,10 +129,11 @@ final class CallsignDatabase {
             try {if(!idText.matches("[0-9]{1,8}"))throw new NumberFormatException();id=Integer.parseInt(idText);if(id<=0||id>=0xffffff||call.isEmpty())throw new NumberFormatException();}
             catch(NumberFormatException e){skipped++;continue;}
             if(!options.accepts(Integer.toString(id)))continue;
+            String[] parts=new String[]{call,"","","",""};
             StringBuilder text=new StringBuilder(call);
-            for(int i=0;i<5;i++)if(options.fields[i]){String value=cell(row,detail[i]);if(!value.isEmpty()&&!value.equalsIgnoreCase("None")&&!value.equalsIgnoreCase("null"))text.append(options.separator).append(value);}
+            for(int i=0;i<5;i++)if(options.fields[i]){String value=cell(row,detail[i]);if(!value.isEmpty()&&!value.equalsIgnoreCase("None")&&!value.equalsIgnoreCase("null")){text.append(options.separator).append(value);int slot=i<2?1:i;parts[slot]+=(parts[slot].isEmpty()?"":" ")+value;}}
             String display=normalize(text.toString());String encoded=display.length()>options.chars?display.substring(0,options.chars):display;
-            rows.add(new Entry(id,display,encoded));
+            rows.add(new Entry(id,display,encoded,parts));
             if(rows.size()>1200000)throw new IOException("Слишком много записей: сузьте регион");
         }
         rows.sort((a,b)->Integer.compare(a.id,b.id));
